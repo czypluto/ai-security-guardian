@@ -1,0 +1,161 @@
+# ============================================================
+#  AI 网络安全管家 - PC Agent 配置
+# ============================================================
+
+# 设备连接
+device:
+  # 通信模式: "serial" | "wifi" | "auto"
+  mode: auto
+
+  # Serial 模式配置
+  serial:
+    port: auto           # COM端口，auto=自动检测
+    baudrate: 115200
+
+  # WiFi 模式配置 (ESP32 需先配好 WiFi)
+  wifi:
+    host: 192.168.1.100  # ESP32 的 IP 地址
+    port: 8080
+
+# 安全监控
+security:
+  # 扫描间隔 (秒)
+  scan_interval: 5
+
+  # 网络监控
+  network:
+    enabled: true
+    # 可疑端口列表 (被连接的外部端口)
+    suspicious_ports:
+      - 4444    # Metasploit
+      - 1337
+      - 31337   # Back Orifice
+      - 6666
+      - 6667    # IRC (常见C2)
+      - 8080    # 常见代理
+      - 8888
+      - 9001
+    # 忽略的本地端口
+    ignore_ports: []
+
+  # 进程监控
+  process:
+    enabled: true
+    # 可疑进程名 (小写)
+    suspicious_names:
+      - "nmap"
+      - "wireshark"
+      - "mimikatz"
+      - "metasploit"
+      - "cobalt"
+      - "beacon"
+      - "nc.exe"
+      - "netcat"
+      - "psexec"
+      - "mimikatz.exe"
+      - "procdump"
+      - "sqldumper"
+      - "cefdebug"
+    # 高CPU告警阈值 (%)
+    cpu_threshold: 80
+    # 高内存告警阈值 (%)
+    mem_threshold: 80
+
+  # 防火墙检查
+  firewall:
+    enabled: true
+    check_interval: 30
+
+  # Windows Defender 检查
+  defender:
+    enabled: true
+    check_interval: 60
+
+# AI 状态
+ai:
+  # 是否启用 AI 状态上报
+  enabled: true
+  # AI 服务端口 (本地 Claude API 代理)
+  api_url: "http://localhost:11434"
+  # 心跳间隔 (秒)
+  heartbeat_interval: 2
+
+# Web Dashboard
+dashboard:
+  enabled: true
+  host: "127.0.0.1"
+  port: 5000
+
+# 系统托盘
+system_tray:
+  enabled: true
+
+# 二次元角色 (陪伴功能)
+character:
+  # 角色配置文件 (JSON)
+  # 留空使用默认角色 "安小盾"
+  config_file: ""
+
+  # 自动说话间隔 (秒)
+  auto_speak_interval: 15
+
+  # 是否启用角色功能
+  enabled: true
+
+# ============================================================
+# 大模型 API 配置 (国内多模型支持)
+# ============================================================
+llm:
+  # 是否启用 LLM 功能
+  enabled: true
+
+  # 默认使用的模型 (优先使用)
+  # 选项: deepseek-chat | glm-4-flash | silicon-deepseek-v3 | silicon-qwen-2.5
+  default_model: "glm-4-flash"
+
+  # 故障转移: 主模型不可用时自动切换
+  failover: true
+
+  # === DeepSeek ===
+  # 获取 key: https://platform.deepseek.com/api_keys
+  deepseek:
+    enabled: true
+    api_key: "sk-your-deepseek-key-here"
+    model: "deepseek-chat"
+    # deepseek-reasoner 适合安全分析但价格更高
+
+  # === 智谱 AI (GLM) ===
+  # 获取 key: https://open.bigmodel.cn/usercenter/apikeys
+  # glm-4-flash 免费! 推荐首选
+  zhipu:
+    enabled: true
+    api_key: "your-zhipu-api-key-here"
+    model: "glm-4-flash"       # 免费模型，日常陪伴
+    # model: "glm-4"           # 付费模型，安全分析
+
+  # === 硅基流动 (SiliconFlow) ===
+  # 获取 key: https://cloud.siliconflow.cn/account/ak
+  # 新用户有免费额度，可调用 DeepSeek-V3 等
+  siliconflow:
+    enabled: true
+    api_key: "sk-your-siliconflow-key-here"
+    model: "deepseek-ai/DeepSeek-V3"   # DeepSeek-V3 on SiliconFlow
+    # model: "Qwen/Qwen2.5-7B-Instruct" # 通义千问
+
+  # LLM 使用场景
+  features:
+    companion_dialogue: true    # 角色动态对话
+    security_analysis: true     # 安全事件 LLM 分析
+    threat_explanation: true    # 威胁通俗解释
+
+  # 调用限制
+  rate_limit:
+    max_per_minute: 10          # 每分钟最多调用次数
+    cooldown_on_error: 30       # 出错后冷却秒数
+
+# 日志
+logging:
+  level: INFO           # DEBUG | INFO | WARNING | ERROR
+  file: "guardian.log"
+  max_size_mb: 10
+  backup_count: 3

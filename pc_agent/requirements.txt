@@ -1,0 +1,33 @@
+# AI 网络安全管家 - PC Agent 依赖
+# Python 3.10+
+
+# 核心
+pyserial>=3.5
+psutil>=5.9.0
+pyyaml>=6.0
+requests>=2.28.0
+
+# 网络监控
+scapy>=2.5.0
+python-nmap>=0.7.1
+
+# Web Dashboard (可选)
+flask>=3.0.0
+flask-socketio>=5.3.0
+
+# Windows 安全 API
+pywin32>=306
+wmi>=1.5.1
+
+# 异步支持
+aiohttp>=3.9.0
+
+# 日志
+colorlog>=6.7.0
+
+# 系统托盘 (可选)
+pystray>=0.19.0
+pillow>=10.0.0
+
+# 角色图片导入 (可选)
+# pillow 已在上方
