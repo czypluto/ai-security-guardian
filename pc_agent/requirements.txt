@@ -29,5 +29,8 @@ colorlog>=6.7.0
 pystray>=0.19.0
 pillow>=10.0.0
 
+# 桌面 GUI (可选)
+PyQt5>=5.15.0
+
 # 角色图片导入 (可选)
 # pillow 已在上方

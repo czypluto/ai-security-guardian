@@ -129,7 +129,7 @@ llm:
   # glm-4-flash 免费! 推荐首选
   zhipu:
     enabled: true
-    api_key: "your-zhipu-api-key-here"
+    api_key: "f0666b155ed34eaf9c59c68327e0e805.vTRR0vvcCsikkKOd"
     model: "glm-4-flash"       # 免费模型，日常陪伴
     # model: "glm-4"           # 付费模型，安全分析
 

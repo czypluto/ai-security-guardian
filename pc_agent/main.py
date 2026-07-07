@@ -47,6 +47,12 @@ try:
 except ImportError:
     HAS_TRAY = False
 
+try:
+    from desktop_gui import run_gui, HAS_PYQT5
+    HAS_GUI = HAS_PYQT5
+except ImportError:
+    HAS_GUI = False
+
 # ==================== 日志 ====================
 
 def setup_logging(config: dict):
@@ -187,7 +193,19 @@ class GuardianController:
         return client
 
     def start(self):
-        """启动所有监控模块"""
+        """启动所有监控模块 (CLI 模式，阻塞主线程)"""
+        self.start_monitors()
+
+        # CLI 主循环
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            self.logger.info("收到退出信号...")
+            self.stop()
+
+    def start_monitors(self):
+        """启动所有监控后台线程 (非阻塞，供 GUI 模式调用)"""
         self.logger.info("=" * 50)
         self.logger.info("  🛡️  AI 网络安全管家启动中...")
         self.logger.info("=" * 50)
@@ -208,7 +226,7 @@ class GuardianController:
         if self.web:
             self._start_thread(self.web.run, "WebDashboard")
 
-        # 启动系统托盘
+        # 启动系统托盘 (仅在非 GUI 模式)
         if self.tray:
             self._start_thread(self.tray.run, "SystemTray")
 
@@ -217,14 +235,6 @@ class GuardianController:
 
         self.logger.info("✅ 所有模块启动完成")
         self.logger.info("📟 查看 ESP32 屏幕确认连接状态")
-
-        # 主循环
-        try:
-            while self.running:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.logger.info("收到退出信号...")
-            self.stop()
 
     def stop(self):
         """停止所有模块"""
@@ -464,6 +474,7 @@ def main():
     parser.add_argument('--no-tray', action='store_true', help='禁用系统托盘')
     parser.add_argument('--no-device', action='store_true', help='禁用设备连接')
     parser.add_argument('--no-dashboard', action='store_true', help='禁用 Web Dashboard')
+    parser.add_argument('--gui', action='store_true', help='启动桌面 GUI (PyQt5)')
     args = parser.parse_args()
 
     controller = GuardianController(config_path=args.config)
@@ -475,6 +486,21 @@ def main():
     if args.no_dashboard:
         controller.config['dashboard']['enabled'] = False
 
+    # GUI 模式 — 统一单体应用，关闭 Web Dashboard 和 pystray
+    if args.gui:
+        if not HAS_GUI:
+            print("❌ PyQt5 未安装。请运行: pip install PyQt5")
+            sys.exit(1)
+        controller.config['dashboard']['enabled'] = False
+        controller.config['system_tray']['enabled'] = False
+        controller.web = None
+        controller.tray = None
+        controller.start_monitors()
+        exit_code = run_gui(controller, controller.logger)
+        controller.stop()
+        sys.exit(exit_code)
+
+    # CLI 模式
     # 处理 Ctrl+C
     def signal_handler(sig, frame):
         controller.stop()

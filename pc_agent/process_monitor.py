@@ -66,7 +66,7 @@ class ProcessMonitor:
 
         try:
             for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent',
-                                              'connections', 'exe', 'cmdline', 'create_time']):
+                                              'exe', 'cmdline', 'create_time']):
                 try:
                     info = proc.info
                     result['total_processes'] += 1
