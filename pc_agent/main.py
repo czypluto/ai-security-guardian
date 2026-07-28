@@ -57,25 +57,36 @@ except ImportError:
 
 def setup_logging(config: dict):
     """配置日志系统"""
-    import colorlog
+    try:
+        import colorlog
+        _has_colorlog = True
+    except ImportError:
+        _has_colorlog = False
 
     log_config = config.get('logging', {})
     level = getattr(logging, log_config.get('level', 'INFO'))
     log_file = log_config.get('file', 'guardian.log')
 
     # 控制台 handler (彩色)
-    console_handler = colorlog.StreamHandler()
-    console_handler.setFormatter(colorlog.ColoredFormatter(
-        '%(log_color)s%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        datefmt='%H:%M:%S',
-        log_colors={
-            'DEBUG': 'cyan',
-            'INFO': 'green',
-            'WARNING': 'yellow',
-            'ERROR': 'red',
-            'CRITICAL': 'red,bg_white',
-        }
-    ))
+    if _has_colorlog:
+        console_handler = colorlog.StreamHandler()
+        console_handler.setFormatter(colorlog.ColoredFormatter(
+            '%(log_color)s%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            datefmt='%H:%M:%S',
+            log_colors={
+                'DEBUG': 'cyan',
+                'INFO': 'green',
+                'WARNING': 'yellow',
+                'ERROR': 'red',
+                'CRITICAL': 'red,bg_white',
+            }
+        ))
+    else:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            datefmt='%H:%M:%S',
+        ))
 
     # 文件 handler
     file_handler = logging.FileHandler(log_file, encoding='utf-8')
@@ -458,6 +469,28 @@ class GuardianController:
 
 # ==================== 入口 ====================
 
+def check_admin_privileges(logger):
+    """检查是否以管理员权限运行"""
+    import ctypes
+    try:
+        is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+    except Exception:
+        is_admin = False
+
+    if not is_admin:
+        logger.warning("=" * 50)
+        logger.warning("⚠️  未以管理员身份运行!")
+        logger.warning("以下功能将受限:")
+        logger.warning("  - 安全事件日志读取")
+        logger.warning("  - Windows Defender 详细信息")
+        logger.warning("  - 进程终止操作")
+        logger.warning("  - 防火墙规则修改")
+        logger.warning("  - 部分网络连接信息")
+        logger.warning("")
+        logger.warning("💡 右键启动程序 → \"以管理员身份运行\" 获取完整功能")
+        logger.warning("=" * 50)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='🛡️ AI 网络安全管家 - PC Agent',
@@ -485,6 +518,9 @@ def main():
         controller.config['device']['mode'] = 'none'
     if args.no_dashboard:
         controller.config['dashboard']['enabled'] = False
+
+    # 管理员权限检查
+    check_admin_privileges(controller.logger)
 
     # GUI 模式 — 统一单体应用，关闭 Web Dashboard 和 pystray
     if args.gui:

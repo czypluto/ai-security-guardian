@@ -24,8 +24,12 @@ class DeviceBridge:
         self.wifi_sock = None
         self.connected = False
         self.lock = threading.Lock()
+        self._reconnect_lock = threading.Lock()  # 防止并发重连
         self._reconnect_count = 0
         self._max_reconnects = 10
+        self._heartbeat_thread = None
+        self._reader_thread = None
+        self._running = False
 
     def connect(self) -> bool:
         """自动选择模式连接设备"""
@@ -39,6 +43,7 @@ class DeviceBridge:
                 self.connected = True
                 self.mode = 'serial'
                 self.logger.info(f"✅ 通过 Serial 连接设备: {self.serial_conn.port}")
+                self._start_background_tasks()
                 return True
 
         # 尝试 WiFi 模式
@@ -47,6 +52,7 @@ class DeviceBridge:
                 self.connected = True
                 self.mode = 'wifi'
                 self.logger.info(f"✅ 通过 WiFi 连接设备: {self.config.get('wifi', {}).get('host')}")
+                self._start_background_tasks()
                 return True
 
         self.logger.warning("⚠️  无法连接到设备")
@@ -144,8 +150,49 @@ class DeviceBridge:
             self.logger.debug(f"WiFi 连接失败: {e}")
             return False
 
+    # ==================== 后台保活线程 ====================
+
+    def _start_background_tasks(self):
+        """启动心跳 + 串口消费后台线程"""
+        self._running = True
+        self._heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop, name="DeviceHeartbeat", daemon=True)
+        self._heartbeat_thread.start()
+
+        if self.mode == 'serial':
+            self._reader_thread = threading.Thread(
+                target=self._serial_reader_loop, name="SerialReader", daemon=True)
+            self._reader_thread.start()
+
+    def _heartbeat_loop(self):
+        """每 2 秒发送 ping 保活，防止固件超时"""
+        while self._running and self.connected:
+            try:
+                if self.mode == 'serial':
+                    self._write_line(json.dumps({"cmd": "ping"}, ensure_ascii=True))
+                elif self.mode == 'wifi':
+                    self._wifi_write(json.dumps({"cmd": "ping"}, ensure_ascii=True) + '\n')
+            except Exception as e:
+                self.logger.debug(f"心跳发送失败: {e}")
+                self._handle_disconnect()
+            time.sleep(2)
+
+    def _serial_reader_loop(self):
+        """持续消费串口响应，避免缓冲区积压导致固件阻塞"""
+        while self._running and self.connected:
+            try:
+                line = self._read_line(timeout=0.5)
+                if line:
+                    self.logger.debug(f"← 设备: {line[:80]}")
+                    # 如果收到 pong，说明连接正常
+                    if 'pong' in line:
+                        pass
+            except Exception:
+                pass  # 读取出错不影响主流程
+
     def disconnect(self):
         """断开连接"""
+        self._running = False  # 停止后台线程
         if self.serial_conn and self.serial_conn.is_open:
             self.serial_conn.close()
         if self.wifi_sock:
@@ -226,15 +273,44 @@ class DeviceBridge:
         return None
 
     def _handle_disconnect(self):
-        """处理断连重连"""
-        self.connected = False
-        self._reconnect_count += 1
-        if self._reconnect_count <= self._max_reconnects:
-            self.logger.warning(f"🔄 设备断连, 尝试重连 ({self._reconnect_count}/{self._max_reconnects})...")
-            time.sleep(2)
-            self.connect()
-        else:
-            self.logger.error("❌ 设备重连次数耗尽, 请检查硬件连接")
+        """处理断连，尝试恢复"""
+        # 防止多个线程同时重连
+        if not self._reconnect_lock.acquire(blocking=False):
+            return  # 已有其他线程在处理重连
+        try:
+            self.connected = False
+            self._running = False  # 停掉旧的后台线程
+
+            # 关闭旧串口，避免端口占用
+            if self.serial_conn and self.serial_conn.is_open:
+                try:
+                    self.serial_conn.close()
+                except Exception:
+                    pass
+            self.serial_conn = None
+
+            self._reconnect_count += 1
+            if self._reconnect_count <= self._max_reconnects:
+                self.logger.warning(f"🔄 设备断连, 尝试重连 ({self._reconnect_count}/{self._max_reconnects})...")
+                time.sleep(2)  # 给 ESP32 一点时间复位
+                if self.mode == 'serial':
+                    if self._connect_serial():
+                        self.connected = True
+                        self._reconnect_count = 0
+                        self._start_background_tasks()
+                        self.logger.info(f"✅ 重连成功: {self.serial_conn.port}")
+                        return
+                elif self.mode == 'wifi':
+                    if self._connect_wifi():
+                        self.connected = True
+                        self._reconnect_count = 0
+                        self._start_background_tasks()
+                        self.logger.info("✅ WiFi 重连成功")
+                        return
+            else:
+                self.logger.error("❌ 设备重连次数耗尽, 请检查硬件连接")
+        finally:
+            self._reconnect_lock.release()
 
     @property
     def is_connected(self) -> bool:

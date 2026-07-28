@@ -26,6 +26,10 @@
 
 #include <Arduino.h>
 
+// Forward declarations — full headers included by the sketch that uses this engine
+class Adafruit_SSD1306;
+class TFT_eSPI;
+
 // ==================== 角色数据结构 ====================
 
 // OLED 角色定义 (单色位图)
@@ -369,7 +373,7 @@ public:
 
   void drawTFT(TFT_eSPI* tft, int x, int y) {
     // 彩色版本 - 支持 16bit RGB565 位图
-    // 此处使用 OLED 兼容的简化渲染，TFT 版本见 character_engine_tft.h
+    // 此处使用 OLED 兼容的简化渲染，TFT 彩色渲染见 characters/default_chibi_tft.h
     // TFT 版本支持:
     //  - 肤色填充
     //  - 发色渐变

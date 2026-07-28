@@ -1,261 +1,277 @@
 """
-Web Dashboard —— 在浏览器中查看安全状态
-访问 http://127.0.0.1:5000
+Web Dashboard — 极简莫兰迪风格
+浏览器访问 http://127.0.0.1:5000
+响应式设计 / 低饱和配色 / 圆角柔和 / hover微效
 """
 
 import logging
-import threading
-import json
-import time
 from flask import Flask, render_template_string, jsonify, request
 
-# 内嵌 HTML 模板
-DASHBOARD_HTML = r"""
-<!DOCTYPE html>
+DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🛡️ AI 网络安全管家</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            background: #0a0e17;
-            color: #e0e6ed;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 900px; margin: 0 auto; }
-        h1 {
-            text-align: center;
-            font-size: 2em;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, #00d4aa, #4a9eff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 网络安全管家</title>
+<style>
+  :root {
+    --bg:        #f5f1ed;
+    --card:      #ffffff;
+    --text:      #4a4a4a;
+    --muted:     #9a8f8a;
+    --border:    #e8e0db;
+    --safe:      #7a9a7e;
+    --warn:      #c9a96e;
+    --danger:    #c47e7e;
+    --accent:    #8b9dab;
+    --shadow:    0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    --radius:    12px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+                 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
 
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
+  /* 导航 */
+  nav {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 10;
+    box-shadow: var(--shadow);
+  }
+  nav .brand { font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: .5px; }
+  nav .brand span { color: var(--accent); }
+  nav .nav-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .status-dot.online { background: var(--safe); }
+  .status-dot.offline { background: var(--danger); }
 
-        .card {
-            background: #141b26;
-            border: 1px solid #1e2d3d;
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-            transition: all 0.3s;
-        }
-        .card:hover { border-color: #4a9eff; transform: translateY(-2px); }
-        .card .icon { font-size: 2.5em; margin-bottom: 8px; }
-        .card .value { font-size: 1.8em; font-weight: bold; margin: 5px 0; }
-        .card .label { font-size: 0.85em; color: #8899aa; text-transform: uppercase; }
+  /* 主体 */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
 
-        .safe { color: #00d4aa; }
-        .warning { color: #ffc107; }
-        .danger { color: #ff4757; }
+  /* 状态卡片网格 */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 24px 20px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    border: 1px solid transparent;
+    transition: border-color .25s, box-shadow .25s;
+  }
+  .card:hover { border-color: var(--border); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .card .emoji { font-size: 32px; margin-bottom: 8px; line-height: 1; }
+  .card .val { font-size: 28px; font-weight: 600; margin: 4px 0; }
+  .card .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .card.safe .val { color: var(--safe); }
+  .card.warn .val { color: var(--warn); }
+  .card.danger .val { color: var(--danger); }
+  .card.danger { border-color: var(--danger); }
 
-        .card.danger-card { border-color: #ff4757; animation: pulse 1.5s infinite; }
-        @keyframes pulse {
-            0%,100% { box-shadow: 0 0 0 0 rgba(255,71,87,0.4); }
-            50% { box-shadow: 0 0 20px 5px rgba(255,71,87,0.2); }
-        }
+  /* 系统资源 */
+  .section {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+  }
+  .section h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+  .meter { margin-bottom: 14px; }
+  .meter .row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; color: var(--muted); }
+  .meter .bar {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--border);
+    overflow: hidden;
+    transition: background .4s;
+  }
+  .meter .bar .fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .6s ease;
+  }
+  .fill.cpu { background: var(--accent); }
+  .fill.mem { background: var(--safe); }
+  .fill.cpu.high { background: var(--danger); }
+  .fill.mem.high { background: var(--danger); }
 
-        .threats-section {
-            background: #141b26;
-            border: 1px solid #1e2d3d;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .threat-item {
-            padding: 8px 12px;
-            margin: 5px 0;
-            background: #1a1e2a;
-            border-radius: 6px;
-            border-left: 3px solid #ffc107;
-        }
+  /* 消息 */
+  .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 6px; }
+  .msg.warn { background: #fdf3e0; color: #8b6d3b; border-left: 3px solid var(--warn); }
+  .msg.danger { background: #fce8e8; color: #8b4a4a; border-left: 3px solid var(--danger); }
 
-        .progress-bar {
-            background: #1e2d3d;
-            border-radius: 10px;
-            height: 20px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        .progress-fill {
-            height: 100%;
-            border-radius: 10px;
-            background: linear-gradient(90deg, #00d4aa, #4a9eff);
-            transition: width 0.5s;
-        }
+  /* 页脚 */
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 24px;
+    border-top: 1px solid var(--border);
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg);
+  }
 
-        .refresh-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            color: #8899aa;
-            font-size: 0.85em;
-        }
+  /* 刷新条 */
+  .refresh-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 13px; color: var(--muted); }
 
-        .btn {
-            background: #1e3a5f;
-            color: #4a9eff;
-            border: 1px solid #2a5088;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9em;
-        }
-        .btn:hover { background: #2a5088; }
-        .btn.danger { background: #3d1a1a; color: #ff4757; border-color: #5f2a2a; }
-        .btn.danger:hover { background: #5f2a2a; }
-    </style>
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .card { padding: 16px 12px; }
+    .card .val { font-size: 22px; }
+    main { padding: 20px 14px 80px; }
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>🛡️ AI 网络安全管家</h1>
 
-        <div class="refresh-bar">
-            <span id="lastUpdate">更新中...</span>
-            <span>
-                状态: <span id="connStatus">● 在线</span>
-            </span>
-        </div>
+<nav>
+  <div class="brand">🛡️ AI <span>安全管家</span></div>
+  <div class="nav-right">
+    <span><span class="status-dot online" id="dot"></span><span id="connLabel">在线</span></span>
+    <span id="clock">--:--:--</span>
+  </div>
+</nav>
 
-        <div class="status-grid">
-            <div class="card" id="secCard">
-                <div class="icon">🛡️</div>
-                <div class="value" id="secLevel">SAFE</div>
-                <div class="label">安全等级</div>
-            </div>
-            <div class="card">
-                <div class="icon">⚠️</div>
-                <div class="value" id="threatCount">0</div>
-                <div class="label">活跃威胁</div>
-            </div>
-            <div class="card">
-                <div class="icon">🌐</div>
-                <div class="value" id="connections">0</div>
-                <div class="label">网络连接</div>
-            </div>
-            <div class="card" id="charCard">
-                <div class="icon" id="charIcon">(｡･ω･｡)</div>
-                <div class="value" id="aiStatus">Idle</div>
-                <div class="label">🤖 AI 状态</div>
-            </div>
-            <div class="card">
-                <div class="icon">🔥</div>
-                <div class="value" id="firewall">ON</div>
-                <div class="label">防火墙</div>
-            </div>
-            <div class="card">
-                <div class="icon">🛡️</div>
-                <div class="value" id="defender">ON</div>
-                <div class="label">防病毒</div>
-            </div>
-        </div>
+<main>
+  <div class="refresh-row">
+    <span id="lastUpdate">加载中...</span>
+  </div>
 
-        <div class="threats-section" id="threatsSection" style="display:none;">
-            <h3>🚨 威胁详情</h3>
-            <div id="threats"></div>
-        </div>
-
-        <div class="card" style="text-align: left; margin-bottom: 20px;">
-            <h3>📊 系统资源</h3>
-            <div>CPU: <span id="cpu">0</span>%</div>
-            <div class="progress-bar">
-                <div class="progress-fill" id="cpuBar" style="width:0%"></div>
-            </div>
-            <div>内存: <span id="mem">0</span>%</div>
-            <div class="progress-bar">
-                <div class="progress-fill" id="memBar" style="width:0%"></div>
-            </div>
-        </div>
+  <!-- 安全卡片 -->
+  <div class="grid">
+    <div class="card" id="secCard">
+      <div class="emoji" id="secEmoji">🛡️</div>
+      <div class="val" id="secLevel">---</div>
+      <div class="lbl">安全等级</div>
     </div>
+    <div class="card">
+      <div class="emoji">⚠️</div>
+      <div class="val" id="threatCount">0</div>
+      <div class="lbl">威胁数</div>
+    </div>
+    <div class="card">
+      <div class="emoji">🌐</div>
+      <div class="val" id="connCount">0</div>
+      <div class="lbl">活跃连接</div>
+    </div>
+    <div class="card">
+      <div class="emoji">🔒</div>
+      <div class="val" id="fwVal">ON</div>
+      <div class="lbl">防火墙</div>
+    </div>
+    <div class="card">
+      <div class="emoji">🛡️</div>
+      <div class="val" id="avVal">ON</div>
+      <div class="lbl">防病毒</div>
+    </div>
+  </div>
 
-    <script>
-        async function refresh() {
-            try {
-                const resp = await fetch('/api/state');
-                const data = await resp.json();
+  <!-- 系统资源 -->
+  <div class="section">
+    <h3>系统资源</h3>
+    <div class="meter">
+      <div class="row"><span>CPU</span><span id="cpuPct">0%</span></div>
+      <div class="bar"><div class="fill cpu" id="cpuBar" style="width:0%"></div></div>
+    </div>
+    <div class="meter">
+      <div class="row"><span>内存</span><span id="memPct">0%</span></div>
+      <div class="bar"><div class="fill mem" id="memBar" style="width:0%"></div></div>
+    </div>
+  </div>
 
-                // 安全等级
-                const secEl = document.getElementById('secLevel');
-                const secCard = document.getElementById('secCard');
-                secEl.textContent = data.sec_level.toUpperCase();
-                secEl.className = 'value ' + data.sec_level;
-                secCard.className = 'card ' + (data.sec_level === 'danger' ? 'danger-card' : '');
+  <!-- 消息 -->
+  <div class="section" id="msgSection" style="display:none">
+    <h3>最近事件</h3>
+    <div id="msgList"></div>
+  </div>
+</main>
 
-                // 威胁
-                document.getElementById('threatCount').textContent = data.threat_count;
-                document.getElementById('connections').textContent = data.active_connections;
-                document.getElementById('aiStatus').textContent = data.ai_status;
-                document.getElementById('firewall').textContent = data.firewall_on ? '✅ ON' : '❌ OFF';
-                document.getElementById('defender').textContent = data.defender_on ? '✅ ON' : '❌ OFF';
+<footer>AI Security Guardian · v3.1</footer>
 
-                // 角色表情
-                const charEmoji = getCharEmoji(data.sec_level, data.ai_status);
-                document.getElementById('charIcon').textContent = charEmoji;
-                const charCard = document.getElementById('charCard');
-                if (data.sec_level === 'danger') {
-                    charCard.style.borderColor = '#ff4757';
-                } else if (data.sec_level === 'warning') {
-                    charCard.style.borderColor = '#ffc107';
-                } else {
-                    charCard.style.borderColor = '#1e2d3d';
-                }
+<script>
+const $ = (s) => document.querySelector(s);
+const API = '/api/state';
 
-                // CPU / Mem
-                const cpu = data.cpu_usage.toFixed(1);
-                const mem = data.mem_usage.toFixed(1);
-                document.getElementById('cpu').textContent = cpu;
-                document.getElementById('cpuBar').style.width = cpu + '%';
-                document.getElementById('mem').textContent = mem;
-                document.getElementById('memBar').style.width = mem + '%';
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-                // 威胁列表
-                const threatsDiv = document.getElementById('threats');
-                const threatsSection = document.getElementById('threatsSection');
-                if (data.messages && data.messages.length > 0) {
-                    threatsSection.style.display = 'block';
-                    threatsDiv.innerHTML = data.messages.map(m =>
-                        `<div class="threat-item">${m}</div>`
-                    ).join('');
-                } else {
-                    threatsSection.style.display = 'none';
-                }
+async function refresh() {
+  try {
+    const r = await fetch(API);
+    const d = await r.json();
 
-                document.getElementById('lastUpdate').textContent =
-                    '最后更新: ' + new Date().toLocaleTimeString('zh-CN');
-            } catch(e) {
-                document.getElementById('connStatus').innerHTML = '● <span class="danger">离线</span>';
-            }
-        }
+    // 安全等级
+    const lv = d.sec_level || 'safe';
+    const sc = $('#secCard');
+    sc.className = 'card ' + (lv === 'danger' ? 'danger' : lv === 'warning' ? 'warn' : 'safe');
+    $('#secLevel').textContent = lv.toUpperCase();
 
-        // 角色表情映射
-        function getCharEmoji(secLevel, aiStatus) {
-            if (secLevel === 'danger') return '(>_<)💢';
-            if (secLevel === 'warning') return '(;_;)⚡';
-            if (aiStatus === 'working') return '(･_･)🛡️';
-            if (aiStatus === 'alert') return '(>_<)';
-            if (aiStatus === 'offline') return '(-_-)💤';
-            return '(｡･ω･｡)✨';
-        }
-        }
+    const emojis = { safe:'😊', warning:'😟', danger:'🚨' };
+    $('#secEmoji').textContent = emojis[lv] || '🛡️';
 
-        setInterval(refresh, 3000);
-        refresh();
-    </script>
+    // 计数
+    $('#threatCount').textContent = d.threat_count || 0;
+    $('#connCount').textContent = d.active_connections || 0;
+    $('#fwVal').textContent = d.firewall_on ? 'ON' : 'OFF';
+    $('#fwVal').style.color = d.firewall_on ? 'var(--safe)' : 'var(--danger)';
+    $('#avVal').textContent = d.defender_on ? 'ON' : 'OFF';
+    $('#avVal').style.color = d.defender_on ? 'var(--safe)' : 'var(--danger)';
+
+    // CPU / 内存
+    const cpu = clamp(d.cpu_usage || 0, 0, 100);
+    const mem = clamp(d.mem_usage || 0, 0, 100);
+    $('#cpuPct').textContent = cpu.toFixed(0) + '%';
+    $('#memPct').textContent = mem.toFixed(0) + '%';
+    $('#cpuBar').style.width = cpu + '%';
+    $('#memBar').style.width = mem + '%';
+    $('#cpuBar').className = 'fill cpu' + (cpu > 80 ? ' high' : '');
+    $('#memBar').className = 'fill mem' + (mem > 80 ? ' high' : '');
+
+    // 消息
+    const msgs = d.messages || [];
+    const ms = $('#msgSection');
+    if (msgs.length) {
+      ms.style.display = 'block';
+      $('#msgList').innerHTML = msgs.map(m =>
+        `<div class="msg ${lv === 'danger' ? 'danger' : 'warn'}">${m}</div>`
+      ).join('');
+    } else { ms.style.display = 'none'; }
+
+    // 在线
+    $('#dot').className = 'status-dot online';
+    $('#connLabel').textContent = '在线';
+    $('#lastUpdate').textContent = '更新: ' + new Date().toLocaleTimeString('zh-CN');
+  } catch(e) {
+    $('#dot').className = 'status-dot offline';
+    $('#connLabel').textContent = '离线';
+  }
+}
+
+refresh(); setInterval(refresh, 3000);
+setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('zh-CN'); }, 1000);
+</script>
 </body>
-</html>
-"""
+</html>"""
 
 
 class WebDashboard:
@@ -268,8 +284,6 @@ class WebDashboard:
         self.app = Flask(__name__)
         self.host = config.get('host', '127.0.0.1')
         self.port = config.get('port', 5000)
-
-        # 注册路由
         self._setup_routes()
 
     def _setup_routes(self):
@@ -281,49 +295,36 @@ class WebDashboard:
 
         @app.route('/api/state')
         def api_state():
-            state = self.controller.get_state()
-            return jsonify(state)
+            return jsonify(self.controller.get_state())
 
         @app.route('/api/logs')
         def api_logs():
             lines = request.args.get('lines', 50, type=int)
-            logs = self.controller.get_logs(lines)
-            return jsonify(logs)
+            return jsonify(self.controller.get_logs(lines))
 
         @app.route('/api/chat', methods=['POST'])
         def api_chat():
-            """与 AI 角色对话 (LLM驱动)"""
             data = request.json or {}
             message = data.get('message', '').strip()
             if not message:
                 return jsonify({'reply': '跟我说点什么吧~', 'success': False})
-
             try:
                 char_mgr = self.controller.character
                 if char_mgr.is_llm_available:
                     reply = char_mgr.smart_chat(message)
                     if reply:
-                        # 同时发送到设备屏幕
                         self.controller.device.send_command({
                             "cmd": "say",
                             "text": reply[:40],
                         })
                         return jsonify({'reply': reply, 'success': True, 'llm': True})
-                    else:
-                        return jsonify({
-                            'reply': '唔... LLM 好像不在状态，请稍后再试~',
-                            'success': False, 'llm': False,
-                        })
-                else:
-                    # 本地台词库回复
-                    reply = char_mgr._pick_from('greeting')
-                    return jsonify({'reply': reply, 'success': True, 'llm': False})
+                reply = char_mgr._pick_from('greeting')
+                return jsonify({'reply': reply, 'success': True, 'llm': False})
             except Exception as e:
                 return jsonify({'reply': f'出错了: {e}', 'success': False})
 
         @app.route('/api/llm/status')
         def api_llm_status():
-            """LLM 状态"""
             try:
                 return jsonify({
                     'available': self.controller.character.is_llm_available,
@@ -336,20 +337,7 @@ class WebDashboard:
             except Exception:
                 return jsonify({'available': False, 'providers': 0})
 
-        @app.route('/api/commands', methods=['POST'])
-        def api_commands():
-            cmd = request.json
-            if cmd.get('action') == 'scan_now':
-                return jsonify({'status': 'ok', 'message': '扫描已触发'})
-            elif cmd.get('action') == 'test_llm':
-                if self.controller.llm.available_count > 0:
-                    results = self.controller.llm.test_connection()
-                    return jsonify({'status': 'ok', 'results': results})
-                return jsonify({'status': 'error', 'message': '无可用 LLM'})
-            return jsonify({'status': 'error', 'message': '未知命令'})
-
     def run(self):
-        """启动 Web 服务器"""
         try:
             self.logger.info(f"🌐 Web Dashboard: http://{self.host}:{self.port}")
             self.app.run(host=self.host, port=self.port, debug=False, use_reloader=False)
@@ -357,6 +345,4 @@ class WebDashboard:
             self.logger.error(f"Dashboard 启动失败: {e}")
 
     def stop(self):
-        """停止 Web 服务器"""
-        # Flask 没有优雅停止方式，依赖线程结束
         pass

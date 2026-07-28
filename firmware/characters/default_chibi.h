@@ -35,7 +35,7 @@ public:
                    int zzzOffset = 0, int wavePhase = 0) {
 
     // 如果眨眼中使用闭眼
-    uint8_t effectiveExp = (blinkFrame == 2) ? EXP_SLEEP_MOMENT : expression;
+    uint8_t effectiveExp = (blinkFrame == 2) ? 0 : expression;  // 0 = idle face
 
     int cx = x + 20, cy = y + 22;  // 头部中心
 

@@ -1,356 +1,337 @@
 /*
- * AI 网络安全管家 - TTGO T-Display 固件 v4.0
- * 双屏: kaomoji表情陪伴 + 状态仪表盘
- * 双缓冲无闪烁
+ * AI 网络安全管家 - TTGO T-Display 固件 v3.1
+ * 极简表情 + 状态仪表盘  双屏按键切换
  */
 
 #include <TFT_eSPI.h>
 #include <ArduinoJson.h>
+#include "../characters/kaomoji_bitmaps.h"
 
 // ==================== 配置 ====================
-#define BUZZER_PIN 5
-#define LED_PIN 12
-#define BACKLIGHT_PIN 4
-#define BUTTON_LEFT 0
+#define BUTTON_LEFT  0
 #define BUTTON_RIGHT 35
 #define SERIAL_BAUD 115200
 
 // ==================== 颜色 ====================
-#define C_SAFE    0x07E0
-#define C_WARN    0xFD20
-#define C_DANGER  0xF800
-#define C_BG      0x0841
-#define C_CARD    0x1082
-#define C_TEXT    0xD69A
-#define C_ACCENT  0x4B7F
+#define C_BG      0x0000   // 纯黑背景
+#define C_SAFE    0x07E0   // 绿
+#define C_WARN    0xFD20   // 黄
+#define C_DANGER  0xF800   // 红
+#define C_TEXT    0xD69A   // 浅灰
 #define C_WHITE   0xFFFF
-#define C_DGREY   0x632C
-#define C_PINK    0xFAC9
-#define C_TEAL    0x3D8E
+#define C_GREY    0x8410   // 暗灰
+
+// ==================== 表情枚举 ====================
+#define EXP_IDLE      0
+#define EXP_HAPPY     1
+#define EXP_WORKING   2
+#define EXP_WORRIED   3
+#define EXP_ANGRY     4
+#define EXP_OFFLINE   5
 
 TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite spr = TFT_eSprite(&tft);
 
+// ==================== 系统状态 ====================
 struct State {
   String sec_level = "safe";
   int threat_count = 0;
-  int blocked_count = 0;
-  int active_connections = 0;
-  int suspicious_ips = 0;
-  String net_status = "normal";
   bool firewall_on = true;
   bool defender_on = true;
   float cpu_usage = 0;
   float mem_usage = 0;
-  long uptime_seconds = 0;
-  String bubble = "";
-  unsigned long bubbleTime = 0;
-} state;
+  int active_connections = 0;
+  int suspicious_ips = 0;
+  uint8_t expression = EXP_IDLE;
+  String msg = "";
+  unsigned long msgTime = 0;
+} st;
 
-int currentScreen = 0;
-unsigned long lastDataReceived = 0;
-unsigned long lastDisplayUpdate = 0;
-int animFrame = 0;
-bool dataTimeout = false;
-bool displayDirty = true;
+int screen = 0;  // 0=表情, 1=仪表盘
+unsigned long lastData = 0;
+bool offline = false;
 
 // ==================== 初始化 ====================
 void setup() {
   Serial.begin(SERIAL_BAUD);
   tft.init();
   tft.setRotation(1);
-  spr.setColorDepth(16);
-  spr.createSprite(135, 240);
-
-  pinMode(BACKLIGHT_PIN, OUTPUT);
-  digitalWrite(BACKLIGHT_PIN, HIGH);
-
-  tft.fillScreen(C_BG);
-  tft.setTextColor(C_ACCENT, C_BG);
-  tft.setTextSize(3);
-  tft.drawString("AI Guard", 15, 40);
-  tft.setTextColor(C_TEXT, C_BG);
-  tft.setTextSize(2);
-  tft.drawString("Booting...", 25, 80);
-  for (int i = 0; i <= 100; i += 10) {
-    tft.fillRect(15, 110, i * 2, 8, C_ACCENT);
-    delay(80);
-  }
-  delay(300);
   tft.fillScreen(C_BG);
 
   pinMode(BUTTON_LEFT, INPUT_PULLUP);
   pinMode(BUTTON_RIGHT, INPUT);
-  if (BUZZER_PIN >= 0) pinMode(BUZZER_PIN, OUTPUT);
-  if (LED_PIN >= 0) pinMode(LED_PIN, OUTPUT);
 
-  lastDataReceived = millis();
-  Serial.println("{\"status\":\"ready\",\"type\":\"tdisplay\"}");
+  // 启动文字
+  tft.setTextColor(C_SAFE, C_BG);
+  tft.setTextSize(2);
+  tft.drawString("AI Guard", 20, 50);
+  tft.setTextColor(C_GREY, C_BG);
+  tft.setTextSize(1);
+  tft.drawString("v3.1", 55, 80);
+  delay(800);
+  tft.fillScreen(C_BG);
+
+  lastData = millis();
+  Serial.println("{\"status\":\"ready\",\"type\":\"tdisplay\",\"version\":\"3.1\"}");
 }
 
 // ==================== 主循环 ====================
 void loop() {
+  unsigned long now = millis();
+
+  // 上次状态 (静态变量，跨 loop 保持)
+  static uint8_t  lastExp    = 255;
+  static String   lastSec    = "";
+  static int      lastThreat = -1;
+  static bool     lastFW     = false, lastAV = false;
+  static float    lastCPU    = -1, lastMEM = -1;
+  static int      lastConn   = -1, lastSusIP = -1;
+  static int      lastScreen = 0;
+  static String   lastMsg    = "";
+
   handleSerial();
 
+  // 30秒超时 → 离线
+  bool wasOffline = offline;
+  offline = (now - lastData > 30000);
+
+  // 状态变更检测
+  uint8_t newExp = mapExpression();
+  bool changed = (newExp != lastExp || st.sec_level != lastSec ||
+      st.threat_count != lastThreat || st.firewall_on != lastFW ||
+      st.defender_on != lastAV || (int)st.cpu_usage != (int)lastCPU ||
+      (int)st.mem_usage != (int)lastMEM ||
+      st.active_connections != lastConn || st.suspicious_ips != lastSusIP ||
+      offline != wasOffline || screen != lastScreen ||
+      st.msg != lastMsg);
+
+  // 消息过期 (5秒)
+  if (st.msg.length() > 0 && now - st.msgTime > 5000) {
+    st.msg = "";
+    changed = true;
+  }
+
+  // 按键切换屏幕
   if (digitalRead(BUTTON_LEFT) == LOW) {
-    currentScreen = !currentScreen;
-    displayDirty = true;
-    delay(250);
+    screen = !screen;
+    changed = true;
+    delay(200);
   }
 
-  bool wasTimeout = dataTimeout;
-  dataTimeout = (millis() - lastDataReceived > 10000);
-  if (dataTimeout != wasTimeout) displayDirty = true;
+  if (changed) {
+    st.expression = newExp;
+    lastExp    = newExp;
+    lastSec    = st.sec_level;
+    lastThreat = st.threat_count;
+    lastFW     = st.firewall_on;
+    lastAV     = st.defender_on;
+    lastCPU    = st.cpu_usage;
+    lastMEM    = st.mem_usage;
+    lastConn   = st.active_connections;
+    lastSusIP  = st.suspicious_ips;
+    lastScreen = screen;
+    lastMsg    = st.msg;
 
-  animFrame = (animFrame + 1) % 32;
-
-  if (displayDirty || millis() - lastDisplayUpdate > 800) {
-    spr.fillScreen(C_BG);
-    if (currentScreen == 0) drawEmojiScreen();
-    else drawStatusScreen();
-    spr.pushSprite(0, 0);
-    lastDisplayUpdate = millis();
-    displayDirty = false;
+    if (screen == 0) drawEmoji();
+    else             drawStatus();
   }
 
-  updateAlerts();
-  delay(30);
+  delay(100);
 }
 
-// ==================== 屏幕0: Kaomoji 表情 ====================
-void drawEmojiScreen() {
-  String exp = state.sec_level;
-  int t = millis();
+// ==================== 表情映射 ====================
+uint8_t mapExpression() {
+  if (offline)                     return EXP_OFFLINE;
+  if (st.sec_level == "danger")    return EXP_ANGRY;
+  if (st.sec_level == "warning")   return EXP_WORRIED;
+  if (st.threat_count == 0)        return EXP_HAPPY;
+  return EXP_IDLE;
+}
 
-  // ---- 背景装饰 ----
-  // 安全时画几个小星星
-  if (exp == "safe") {
-    for (int i = 0; i < 5; i++) {
-      int sx = 10 + (i * 25) + (sin(t*0.003 + i) * 8);
-      int sy = 14 + (cos(t*0.005 + i) * 6);
-      spr.fillCircle(sx, sy, 2, C_WARN);
+// ==================== 表情屏 ====================
+void drawEmoji() {
+  tft.fillScreen(C_BG);
+
+  // 选择位图颜文字
+  uint16_t ec;
+  const uint8_t* bitmap;
+  int bw, bh;
+
+  if (offline) {
+    ec = C_GREY; bitmap = KAO_OFFLINE; bw = KAO_OFFLINE_W; bh = KAO_OFFLINE_H;
+  } else {
+    switch (st.expression) {
+      case EXP_HAPPY:   ec = C_SAFE;   bitmap = KAO_HAPPY;   bw = KAO_HAPPY_W;   bh = KAO_HAPPY_H;   break;
+      case EXP_WORRIED: ec = C_WARN;   bitmap = KAO_WORRIED; bw = KAO_WORRIED_W; bh = KAO_WORRIED_H; break;
+      case EXP_ANGRY:   ec = C_DANGER; bitmap = KAO_DANGER;  bw = KAO_DANGER_W;  bh = KAO_DANGER_H;  break;
+      case EXP_OFFLINE: ec = C_GREY;   bitmap = KAO_OFFLINE; bw = KAO_OFFLINE_W; bh = KAO_OFFLINE_H; break;
+      default:          ec = C_TEXT;   bitmap = KAO_NORMAL;  bw = KAO_NORMAL_W;  bh = KAO_NORMAL_H;  break;
     }
   }
-  // 危险时红色闪烁边框
-  if (exp == "danger" && (t / 500) % 2) {
-    spr.drawRoundRect(5, 5, 125, 115, 8, C_DANGER);
-    spr.drawRoundRect(6, 6, 123, 113, 8, C_DANGER);
+
+  // 居中绘制位图
+  int bx = (135 - bw) / 2;
+  int by = 45;
+  tft.drawBitmap(bx, by, bitmap, bw, bh, ec);
+
+  // 消息文字 (PC发来的话)
+  if (st.msg.length() > 0) {
+    tft.setTextColor(C_SAFE, C_BG);
+    tft.setTextSize(1);
+    tft.drawString(st.msg, (135 - tft.textWidth(st.msg)) / 2, by + bh + 5);
   }
 
-  // ---- 表情主体 ----
-  spr.setTextSize(4);
-  spr.setTextColor(C_WHITE, C_BG);
+  // 状态标签
+  tft.setTextSize(1);
+  const char* label;
+  uint16_t lc;
 
-  String face;
-  if (dataTimeout) {
-    face = "(-_-)";           // 断连睡觉
-    spr.setTextColor(C_DGREY, C_BG);
-  } else if (exp == "danger") {
-    face = "(>_<)";           // 危险
-    spr.setTextColor(C_DANGER, C_BG);
-  } else if (exp == "warning") {
-    face = "(;_;)";           // 担心
-    spr.setTextColor(C_WARN, C_BG);
+  if (offline) {
+    label = "-- DISCONNECTED --"; lc = C_DANGER;
+  } else if (st.sec_level == "danger") {
+    label = "!! DANGER !!"; lc = C_DANGER;
+  } else if (st.sec_level == "warning") {
+    label = "... WARNING ..."; lc = C_WARN;
   } else {
-    face = "(^_^)";           // 开心
-    spr.setTextColor(C_SAFE, C_BG);
+    label = "SECURE"; lc = C_SAFE;
   }
 
-  // 居中绘制表情
-  int fw = spr.textWidth(face);
-  spr.drawString(face, (135 - fw) / 2, 35);
+  tft.setTextColor(lc, C_BG);
+  tft.drawString(label, (135 - tft.textWidth(label)) / 2, 140);
 
-  // ---- 装饰文字 ----
-  spr.setTextSize(2);
-  if (dataTimeout) {
-    spr.setTextColor(C_DGREY, C_BG);
-    spr.drawString("zzZ...", 42, 70);
-  } else if (exp == "danger") {
-    spr.setTextColor(C_DANGER, C_BG);
-    spr.drawString("DANGER!", 30, 70);
-  } else if (exp == "warning") {
-    spr.setTextColor(C_WARN, C_BG);
-    spr.drawString("Checking...", 20, 70);
-  } else {
-    spr.setTextColor(C_SAFE, C_BG);
-    spr.drawString("All Good~", 25, 70);
+  // 底部简述
+  tft.setTextColor(C_GREY, C_BG);
+  tft.drawString("FW:" + String(st.firewall_on ? "ON" : "OFF") + " AV:" + String(st.defender_on ? "ON" : "OFF"), 5, 170);
+  tft.drawString("CPU:" + String((int)st.cpu_usage) + "% MEM:" + String((int)st.mem_usage) + "%", 5, 185);
+  tft.drawString("T:" + String(st.threat_count) + " C:" + String(st.active_connections), 5, 200);
+
+  // 威胁告警
+  if (st.threat_count > 0) {
+    tft.setTextColor(C_DANGER, C_BG);
+    tft.drawString("Threats: " + String(st.threat_count), 5, 220);
   }
 
-  // ---- 气泡 ----
-  drawBubble();
-
-  // 底部
-  spr.setTextColor(C_DGREY, C_BG);
-  spr.setTextSize(1);
-  spr.drawString("< to status", 35, 126);
+  // 导航
+  tft.setTextColor(C_GREY, C_BG);
+  tft.drawString("< btn >", 45, 228);
 }
 
-void drawBubble() {
-  String text = state.bubble;
-  if (text.length() > 0 && millis() - state.bubbleTime > 4500) {
-    text = "";
-    state.bubble = "";
-  }
-  if (text.length() == 0) {
-    if (dataTimeout) text = "主人还在吗...";
-    else if (state.sec_level == "danger") text = "危险!快处理!";
-    else if (state.sec_level == "warning") text = "有可疑情况...";
-    else text = "今天也很安全~";
-  }
+// ==================== 仪表盘 ====================
+void drawStatus() {
+  tft.fillScreen(C_BG);
+  int y = 8;
 
-  spr.fillRoundRect(5, 97, 125, 24, 6, C_WHITE);
-  spr.drawRoundRect(5, 97, 125, 24, 6, C_CARD);
-  spr.fillTriangle(55, 121, 62, 121, 50, 127, C_WHITE);
+  tft.setTextSize(1);
 
-  spr.setTextColor(C_BG, C_WHITE);
-  spr.setTextSize(1);
-  spr.drawString(text.substring(0, 22), 9, 103);
-}
-
-// ==================== 屏幕1: 状态仪表盘 ====================
-void drawStatusScreen() {
-  int y = 26;
-
-  spr.setTextColor(C_ACCENT, C_BG);
-  spr.setTextSize(2);
-  spr.drawString("Status", 5, y);
+  // 标题
+  tft.setTextColor(C_SAFE, C_BG);
+  tft.drawString("=== Status ===", 20, y);
   y += 22;
 
-  // 安全等级大卡片
-  uint16_t sc = state.sec_level == "danger" ? C_DANGER :
-                state.sec_level == "warning" ? C_WARN : C_SAFE;
-  spr.fillRoundRect(3, y, 129, 24, 6, sc);
-  spr.setTextColor(C_WHITE, sc);
-  spr.setTextSize(2);
-  String st = state.sec_level == "danger" ? "! DANGER !" :
-              state.sec_level == "warning" ? "WARNING" : "SECURE";
-  spr.drawString(st, (135-spr.textWidth(st))/2, y+3);
-  y += 30;
-
-  // 统计
-  spr.setTextColor(C_TEXT, C_BG);
-  spr.setTextSize(1);
-  spr.drawString("Threats:" + String(state.threat_count), 5, y);
-  spr.drawString("Blocked:" + String(state.blocked_count), 70, y);
-  y += 18;
-  spr.drawString("Conn:" + String(state.active_connections), 5, y);
-  String nl = state.net_status == "under_attack" ? "ATTACK" :
-              state.net_status == "suspicious" ? "Suspicious" : "Normal";
-  uint16_t nc = state.net_status == "under_attack" ? C_DANGER :
-                state.net_status == "suspicious" ? C_WARN : C_SAFE;
-  spr.setTextColor(nc, C_BG);
-  spr.drawString(nl, 70, y);
-  y += 20;
+  // 安全等级
+  uint16_t sc = (st.sec_level == "danger") ? C_DANGER :
+                (st.sec_level == "warning") ? C_WARN : C_SAFE;
+  tft.fillRoundRect(5, y, 125, 24, 4, sc);
+  tft.setTextColor(C_WHITE, sc);
+  String stxt = (st.sec_level == "danger") ? "! DANGER !" :
+                (st.sec_level == "warning") ? "WARNING" : "SECURE";
+  tft.drawString(stxt, (135 - tft.textWidth(stxt)) / 2, y + 5);
+  y += 34;
 
   // 防火墙/杀毒
-  spr.fillRoundRect(3, y, 62, 16, 4, state.firewall_on ? C_SAFE : C_DANGER);
-  spr.setTextColor(C_WHITE, state.firewall_on ? C_SAFE : C_DANGER);
-  spr.drawString("FW:ON", 8, y+2);
-  spr.fillRoundRect(70, y, 62, 16, 4, state.defender_on ? C_SAFE : C_DANGER);
-  spr.setTextColor(C_WHITE, state.defender_on ? C_SAFE : C_DANGER);
-  spr.drawString("AV:ON", 75, y+2);
+  tft.setTextColor(C_TEXT, C_BG);
+  tft.fillRoundRect(5, y, 58, 16, 3, st.firewall_on ? C_SAFE : C_DANGER);
+  tft.setTextColor(C_WHITE);
+  tft.drawString("FW:ON", 10, y + 2);
+  tft.fillRoundRect(72, y, 58, 16, 3, st.defender_on ? C_SAFE : C_DANGER);
+  tft.drawString("AV:ON", 77, y + 2);
+  y += 26;
+
+  // 统计
+  tft.setTextColor(C_TEXT, C_BG);
+  tft.drawString("Threats: " + String(st.threat_count), 5, y);
+  tft.drawString("Conns: " + String(st.active_connections), 75, y);
+  y += 18;
+  tft.drawString("SusIP: " + String(st.suspicious_ips), 5, y);
   y += 22;
 
-  // CPU
-  spr.setTextColor(C_TEXT, C_BG);
-  spr.drawString("CPU", 3, y);
-  spr.drawRect(30, y, 78, 7, C_ACCENT);
-  spr.fillRect(31, y+1, (int)(state.cpu_usage*76/100), 5,
-               state.cpu_usage>80?C_DANGER:state.cpu_usage>60?C_WARN:C_SAFE);
-  spr.drawString(String((int)state.cpu_usage)+"%", 112, y);
-  y += 12;
-
-  // MEM
-  spr.drawString("MEM", 3, y);
-  spr.drawRect(30, y, 78, 7, C_ACCENT);
-  spr.fillRect(31, y+1, (int)(state.mem_usage*76/100), 5,
-               state.mem_usage>80?C_DANGER:state.mem_usage>60?C_WARN:C_SAFE);
-  spr.drawString(String((int)state.mem_usage)+"%", 112, y);
+  // CPU 条
+  tft.drawString("CPU", 3, y);
+  tft.drawRect(28, y, 80, 10, C_GREY);
+  int cpuW = (int)(st.cpu_usage * 78 / 100);
+  uint16_t cpuC = (st.cpu_usage > 80) ? C_DANGER : (st.cpu_usage > 60) ? C_WARN : C_SAFE;
+  tft.fillRect(29, y + 1, cpuW, 8, cpuC);
+  tft.drawString(String((int)st.cpu_usage) + "%", 112, y);
   y += 16;
 
-  spr.setTextColor(C_DGREY, C_BG);
-  spr.drawString("Up: " + fmtUptime(state.uptime_seconds), 5, y);
-  spr.drawString("< to emoji", 70, y);
+  // MEM 条
+  tft.drawString("MEM", 3, y);
+  tft.drawRect(28, y, 80, 10, C_GREY);
+  int memW = (int)(st.mem_usage * 78 / 100);
+  uint16_t memC = (st.mem_usage > 80) ? C_DANGER : (st.mem_usage > 60) ? C_WARN : C_SAFE;
+  tft.fillRect(29, y + 1, memW, 8, memC);
+  tft.drawString(String((int)st.mem_usage) + "%", 112, y);
+  y += 24;
+
+  // 底部
+  tft.setTextColor(C_GREY, C_BG);
+  tft.drawString("v3.1", 5, y);
+  tft.drawString("< btn >", 80, y);
+  tft.drawString("> emoji", 5, 228);
 }
 
-String fmtUptime(long s) {
-  if (s<60) return String(s)+"s";
-  long m=s/60,h=m/60,d=h/24;
-  if(d>0) return String(d)+"d"+String(h%24)+"h";
-  if(h>0) return String(h)+"h"+String(m%60)+"m";
-  return String(m)+"m";
-}
-
-// ==================== 串口 ====================
+// ==================== 串口通信 ====================
 void handleSerial() {
   static String buf = "";
   while (Serial.available()) {
     char c = Serial.read();
-    if (c=='\n') { processCommand(buf); buf=""; }
+    if (c == '\n') { process(buf); buf = ""; }
     else buf += c;
   }
 }
 
-void processCommand(String json) {
+void process(String json) {
   json.trim();
-  if (json.length()==0) return;
+  if (json.length() == 0) return;
   StaticJsonDocument<1024> doc;
   if (deserializeJson(doc, json)) return;
 
   String cmd = doc["cmd"] | "";
+
   if (cmd == "update") {
-    state.sec_level = doc["sec_level"] | state.sec_level;
-    state.threat_count = doc["threat_count"] | state.threat_count;
-    state.blocked_count = doc["blocked_count"] | state.blocked_count;
-    state.active_connections = doc["active_connections"] | state.active_connections;
-    state.suspicious_ips = doc["suspicious_ips"] | state.suspicious_ips;
-    state.net_status = doc["net_status"] | state.net_status;
-    state.firewall_on = doc["firewall_on"] | state.firewall_on;
-    state.defender_on = doc["defender_on"] | state.defender_on;
-    state.cpu_usage = doc["cpu_usage"] | state.cpu_usage;
-    state.mem_usage = doc["mem_usage"] | state.mem_usage;
-    state.uptime_seconds = doc["uptime"] | state.uptime_seconds;
-    lastDataReceived = millis();
-    displayDirty = true;
+    st.sec_level        = doc["sec_level"]        | st.sec_level;
+    st.threat_count     = doc["threat_count"]     | st.threat_count;
+    st.firewall_on      = doc["firewall_on"]      | st.firewall_on;
+    st.defender_on      = doc["defender_on"]      | st.defender_on;
+    st.cpu_usage        = doc["cpu_usage"]        | st.cpu_usage;
+    st.mem_usage        = doc["mem_usage"]        | st.mem_usage;
+    st.active_connections = doc["active_connections"] | st.active_connections;
+    st.suspicious_ips   = doc["suspicious_ips"]   | st.suspicious_ips;
+    lastData = millis();
     Serial.println("{\"status\":\"ok\"}");
+
   } else if (cmd == "ping") {
-    lastDataReceived = millis();
-    displayDirty = true;
+    lastData = millis();
     Serial.println("{\"status\":\"pong\"}");
-  } else if (cmd == "say") {
-    state.bubble = doc["text"] | "";
-    state.bubbleTime = millis();
-    currentScreen = 0;
-    displayDirty = true;
-    Serial.println("{\"status\":\"ok\"}");
+
   } else if (cmd == "screen") {
-    currentScreen = doc["screen"] | 0;
-    displayDirty = true;
+    screen = doc["screen"] | 0;
     Serial.println("{\"status\":\"ok\"}");
+
+  } else if (cmd == "say") {
+    st.msg = doc["text"] | "";
+    st.msgTime = millis();
+    screen = 0;  // 切回表情屏显示消息
+    Serial.println("{\"status\":\"ok\"}");
+
+  } else if (cmd == "expression") {
+    int exp = doc["expression"] | -1;
+    if (exp >= 0 && exp < 8) st.expression = exp;
+    Serial.println("{\"status\":\"ok\"}");
+
   } else if (cmd == "alert") {
-    state.sec_level = "danger";
-    state.bubble = doc["message"] | "ALERT!";
-    state.bubbleTime = millis();
-    currentScreen = 0;
-    displayDirty = true;
-    beepAlert(3);
+    st.sec_level = "danger";
+    screen = 0;
+    st.expression = EXP_ANGRY;
     Serial.println("{\"status\":\"alert_ack\"}");
   }
-}
-
-void updateAlerts() {
-  if (BUZZER_PIN >= 0) {
-    if (state.sec_level=="danger") digitalWrite(BUZZER_PIN,(millis()/200)%2);
-    else if (state.sec_level=="warning") digitalWrite(BUZZER_PIN,(millis()/800)%2);
-    else digitalWrite(BUZZER_PIN,LOW);
-  }
-  if (LED_PIN >= 0) {
-    if (state.sec_level=="danger") analogWrite(LED_PIN,255);
-    else if (state.sec_level=="warning") analogWrite(LED_PIN,128);
-    else analogWrite(LED_PIN,0);
-  }
-}
-void beepAlert(int times) {
-  if (BUZZER_PIN<0) return;
-  for(int i=0;i<times;i++){digitalWrite(BUZZER_PIN,HIGH);delay(100);digitalWrite(BUZZER_PIN,LOW);delay(80);}
 }

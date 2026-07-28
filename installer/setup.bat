@@ -68,7 +68,7 @@ echo pause
 ) > "%START_SCRIPT%"
 
 :: 创建快捷方式
-powershell -Command "$WS = New-Object -ComObject WScript.Shell; $SC = $WS.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\AI安全管家.lnk'); $SC.TargetPath = '%START_SCRIPT%'; $SC.WorkingDirectory = '%~dp0..\pc_agent'; $SC.IconLocation = 'shell32.dll,13'; $SC.Description = 'AI 网络安全管家'; $SC.Save()" 2>nul
+powershell -Command "$WS = New-Object -ComObject WScript.Shell; $SC = $WS.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\AI安全管家.lnk'); $SC.TargetPath = '%START_SCRIPT%'; $SC.WorkingDirectory = '%~dp0..\pc_agent'; $SC.IconLocation = '%~dp0..\pc_agent\shield.ico,0'; $SC.Description = 'AI 网络安全管家'; $SC.Save()" 2>nul
 
 echo.
 echo ╔══════════════════════════════════════════╗

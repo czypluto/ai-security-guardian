@@ -231,6 +231,48 @@ class MultiLLMClient:
 
     # ==================== 核心调用 ====================
 
+    @staticmethod
+    def _normalize_role(role: str) -> str:
+        """统一角色名为 API 标准格式"""
+        if role in ('ai', 'assistant', 'bot', 'model'):
+            return 'assistant'
+        if role in ('user', 'human', 'me'):
+            return 'user'
+        if role in ('system', 'sys'):
+            return 'system'
+        return role
+
+    @staticmethod
+    def _build_messages(messages: List[Dict], system_prompt: str,
+                        provider: Provider) -> List[Dict]:
+        """构建消息列表，智谱不支持 system 角色，需合并到第一条 user 消息"""
+        # 先统一角色名
+        normalized = []
+        for m in messages:
+            normalized.append({
+                "role": MultiLLMClient._normalize_role(m["role"]),
+                "content": m["content"]
+            })
+
+        if not system_prompt:
+            return normalized
+
+        if provider == Provider.ZHIPU:
+            # 智谱 GLM 不支持 system 角色，合并到第一条 user 消息前
+            result = normalized
+            if result and result[0]["role"] == "user":
+                result[0] = {
+                    "role": "user",
+                    "content": f"{system_prompt}\n\n---\n\n{result[0]['content']}"
+                }
+            else:
+                result.insert(0, {"role": "user", "content": system_prompt})
+            return result
+        else:
+            result = [{"role": "system", "content": system_prompt}]
+            result.extend(normalized)
+            return result
+
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -246,12 +288,6 @@ class MultiLLMClient:
                 success=False, error="没有可用的 LLM 提供商"
             )
 
-        # 构建完整消息
-        full_messages = []
-        if system_prompt:
-            full_messages.append({"role": "system", "content": system_prompt})
-        full_messages.extend(messages)
-
         # 轮询尝试所有 provider
         errors = []
         for attempt in range(len(self._configs)):
@@ -263,6 +299,9 @@ class MultiLLMClient:
                 if time.time() < self._offline_until.get(config.provider.value, 0):
                     continue
                 self._offline_providers.discard(config.provider.value)
+
+            # 针对每个 provider 构建适配的消息格式
+            full_messages = self._build_messages(messages, system_prompt, config.provider)
 
             response = self._call_api(config, full_messages, max_tokens, temperature, stream)
             if response.success:
@@ -300,10 +339,7 @@ class MultiLLMClient:
             return
 
         config = self._configs[self._active_idx]
-        full_messages = []
-        if system_prompt:
-            full_messages.append({"role": "system", "content": system_prompt})
-        full_messages.extend(messages)
+        full_messages = self._build_messages(messages, system_prompt, config.provider)
 
         try:
             payload = {
