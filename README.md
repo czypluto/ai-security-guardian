@@ -176,7 +176,6 @@ $ python agent_cli.py "全面扫描我的网络安全"
 | CLI 命令行 | `python main.py` | 彩色日志，适合服务器/后台 |
 | PyQt5 桌面 GUI | `python main.py --gui` | 暗色极简主题，状态卡片 |
 | AI 对话窗口 | GUI 内打开 | 流式对话，快速操作按钮 |
-| Web Dashboard | `http://127.0.0.1:5000` | 浏览器实时面板，REST API |
 | 系统托盘 | 自动 (GUI 内置) | 状态色图标，最小化到托盘 |
 
 ---
