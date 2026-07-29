@@ -42,8 +42,7 @@
 #define EXP_WORRIED   3   // ;_;   担忧/警告
 #define EXP_ANGRY     4   // >_<   危险!
 #define EXP_OFFLINE   5   // ⚡    断连
-#define EXP_LOVE      6   // ♡_♡  喜欢
-#define EXP_GREETING  7   // ★o★  欢迎
+#define EXP_GREETING  7   // ★o★  欢迎 (6=EXP_LOVE 已废弃)
 
 // ==================== 全局对象 ====================
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -57,11 +56,9 @@ struct SystemState {
   String sec_level = "safe";
   int threat_count = 0;
   int blocked_count = 0;
-  String last_threat = "";
   // 网络
   int active_connections = 0;
   int suspicious_ips = 0;
-  String net_status = "normal";
   // 系统
   bool firewall_on = true;
   bool defender_on = true;
@@ -309,7 +306,6 @@ void drawEmojiScreen(unsigned long now) {
       case EXP_WORRIED:  emoji = "; ;";                        break;
       case EXP_ANGRY:    emoji = "> <";                        break;
       case EXP_OFFLINE:  emoji = "x x";                        break;
-      case EXP_LOVE:     emoji = "* *";                        break;
       case EXP_GREETING: emoji = eyesClosed ? "- -" : "O O";   break;
       default:           emoji = "o o";                        break;
     }
@@ -333,7 +329,6 @@ void drawEmojiScreen(unsigned long now) {
       case EXP_WORRIED:  mouth = "_";    break;
       case EXP_ANGRY:    mouth = "_";    break;
       case EXP_OFFLINE:  mouth = "_";    break;
-      case EXP_LOVE:     mouth = "w";    break;
       case EXP_GREETING: mouth = "v";    break;
       default:           mouth = "w";    break;
     }
@@ -461,10 +456,8 @@ void processCommand(String json) {
     sys.sec_level    = doc["sec_level"]    | sys.sec_level;
     sys.threat_count   = doc["threat_count"]   | sys.threat_count;
     sys.blocked_count  = doc["blocked_count"]  | sys.blocked_count;
-    sys.last_threat    = doc["last_threat"]    | sys.last_threat;
     sys.active_connections = doc["active_connections"] | sys.active_connections;
     sys.suspicious_ips     = doc["suspicious_ips"]     | sys.suspicious_ips;
-    sys.net_status    = doc["net_status"]    | sys.net_status;
     sys.firewall_on   = doc["firewall_on"]   | sys.firewall_on;
     sys.defender_on   = doc["defender_on"]   | sys.defender_on;
     sys.cpu_usage     = doc["cpu_usage"]     | sys.cpu_usage;
@@ -481,7 +474,6 @@ void processCommand(String json) {
 
   } else if (cmd == "alert") {
     sys.sec_level = "danger";
-    sys.last_threat = doc["message"] | "ALERT";
     sys.expression = EXP_ANGRY;
     currentScreen = SCREEN_EMOJI;  // 告警时切回表情屏
     beep(5);

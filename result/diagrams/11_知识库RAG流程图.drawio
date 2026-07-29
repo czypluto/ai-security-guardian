@@ -1,0 +1,93 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="知识库RAG流程图" id="rag">
+    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 — 知识库 RAG (检索增强生成) 流程图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=16;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="180" y="5" width="640" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Write Path -->
+        <mxCell id="w_title" value="写入路径 (对话保存)" style="text;html=1;strokeColor=none;fillColor=#c8e6c9;fontSize=13;fontStyle=1;fontColor=#2e7d32;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="55" width="250" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="w1" value="用户与 AI 对话结束" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="90" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="wa1" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="130" y="130" as="sourcePoint" /><mxPoint x="130" y="155" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="w2" value="AgentCore.save_conversation()&#10;过滤有效 Q&amp;A 对" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="155" width="160" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="wa2" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="130" y="200" as="sourcePoint" /><mxPoint x="130" y="225" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="w3" value="文本向量化 (Embedding)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="225" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="wa3" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="130" y="265" as="sourcePoint" /><mxPoint x="130" y="290" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="w4" value="写入 ChromaDB&#10;(向量 + 元数据)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="290" width="160" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="wa4" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="130" y="335" as="sourcePoint" /><mxPoint x="130" y="360" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="w5" value="同时保存 Markdown 文件&#10;conversations/xxx.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=#757575;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="35" y="360" width="190" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Read Path -->
+        <mxCell id="r_title" value="读取路径 (上下文检索)" style="text;html=1;strokeColor=none;fillColor=#bbdefb;fontSize=13;fontStyle=1;fontColor=#1565c0;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="435" width="250" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="r1" value="用户发送新问题" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#2196f3;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="470" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ra1" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="120" y="510" as="sourcePoint" /><mxPoint x="120" y="535" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="r2" value="KnowledgeBase.build_context()&#10;用户问题 → Embedding 向量" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#2196f3;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="535" width="200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="ra2" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="140" y="580" as="sourcePoint" /><mxPoint x="140" y="605" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="r3" value="ChromaDB 语义相似度检索&#10;(top_k=3)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="605" width="180" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="ra3" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="140" y="650" as="sourcePoint" /><mxPoint x="140" y="675" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="r4" value="相关知识片段 → 注入 System Prompt&#10;实现 RAG 增强" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1565c0;strokeColor=#0d47a1;fontColor=#fff;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="675" width="220" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Embedding Fallback -->
+        <mxCell id="ef_title" value="Embedding 双模降级策略" style="text;html=1;strokeColor=none;fillColor=#f3e5f5;fontSize=13;fontStyle=1;fontColor=#6a1b9a;align=left;" vertex="1" parent="1">
+          <mxGeometry x="360" y="55" width="250" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ef1" value="sentence-transformers&#10;已安装?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#6a1b9a;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="400" y="90" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ef_y" value="是 → 生产模式&#10;paraphrase-multilingual&#10;-MiniLM-L12-v2 (~470MB)&#10;384/768 维高质量向量" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=10;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="610" y="85" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ef_n" value="否 → 后备模式&#10;TF-IDF (纯 Python)&#10;零依赖、零 GPU&#10;稀疏向量" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#e53935;fontSize=10;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="610" y="175" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ef_y_a" value="是" style="endArrow=classic;html=1;strokeColor=#4caf50;fontStyle=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="550" y="110" as="sourcePoint" /><mxPoint x="610" y="110" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="ef_n_a" value="否" style="endArrow=classic;html=1;strokeColor=#e53935;fontStyle=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="475" y="150" as="sourcePoint" /><mxPoint x="475" y="175" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Data structure -->
+        <mxCell id="ds_title" value="ChromaDB 数据模型" style="text;html=1;strokeColor=none;fillColor=#e0f7fa;fontSize=13;fontStyle=1;fontColor=#00838f;align=left;" vertex="1" parent="1">
+          <mxGeometry x="360" y="270" width="250" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_model" value="Collection: guardian_knowledge&#10;├── id: UUID (自动生成)&#10;├── document: 对话文本内容&#10;├── embedding: float[384] or float[768]&#10;└── metadata:&#10;    ├── timestamp: ISO 8601&#10;    ├── role: user / assistant&#10;    ├── conversation_id: 对话批次ID&#10;    └── tags: [] 主题标签" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f7fa;strokeColor=#00838f;fontSize=10;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="370" y="300" width="280" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Knowledge directory -->
+        <mxCell id="kd_title" value="知识库目录结构" style="text;html=1;strokeColor=none;fillColor=#eceff1;fontSize=13;fontStyle=1;fontColor=#37474f;align=left;" vertex="1" parent="1">
+          <mxGeometry x="360" y="475" width="250" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="kd_tree" value="knowledge_base/&#10;├── chroma/&#10;│   ├── chroma.sqlite3&#10;│   └── *.parquet (向量索引)&#10;└── conversations/&#10;    ├── 2026-07-28_103322.md&#10;    └── 2026-07-28_113402.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eceff1;strokeColor=#607d8b;fontSize=10;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="370" y="505" width="280" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Summary note -->
+        <mxCell id="sum_note" value="🔑 核心价值: 每轮对话前检索历史相关上下文 → 注入 System Prompt → AI 回答更具连贯性和个性化" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a237e;strokeColor=#0d1b5e;fontColor=#fff;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="360" y="660" width="480" height="35" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

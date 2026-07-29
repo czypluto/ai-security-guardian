@@ -27,7 +27,6 @@ class TestSecurityLevelCalculation:
              patch('main.MultiLLMClient'), \
              patch('main.CharacterManager'), \
              patch('main.setup_logging', return_value=MagicMock()), \
-             patch('main.HAS_DASHBOARD', False), \
              patch('main.HAS_TRAY', False), \
              patch('main.HAS_GUI', False), \
              patch('builtins.open', create=True), \
@@ -40,7 +39,6 @@ class TestSecurityLevelCalculation:
                      'firewall': {},
                  },
                  'ai': {'enabled': False},
-                 'dashboard': {'enabled': False},
                  'system_tray': {'enabled': False},
                  'llm': {'enabled': False},
                  'character': {},

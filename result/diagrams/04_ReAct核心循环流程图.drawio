@@ -1,0 +1,94 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="ReAct核心循环流程图" id="react">
+    <mxGraphModel dx="900" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 — ReAct Agent 核心循环流程图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="150" y="8" width="600" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- User Input -->
+        <mxCell id="user_input" value="用户输入自然语言指令&#10;(例: "扫描我的网络")" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="310" y="55" width="220" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="420" y="110" as="sourcePoint" /><mxPoint x="420" y="145" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Skill Match -->
+        <mxCell id="skill_match" value="SkillManager 匹配触发词" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="320" y="145" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="420" y="185" as="sourcePoint" /><mxPoint x="420" y="220" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- KB Search -->
+        <mxCell id="kb_search" value="KnowledgeBase 语义检索&#10;获取相关历史对话上下文" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f7fa;strokeColor=#00838f;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="220" width="220" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="420" y="265" as="sourcePoint" /><mxPoint x="420" y="300" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Build Prompt -->
+        <mxCell id="build_prompt" value="构建 System Prompt&#10;(基础提示词 + 技能 + 知识库上下&#25991;)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="300" width="220" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#ff9800;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="420" y="345" as="sourcePoint" /><mxPoint x="420" y="388" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Loop Begin -->
+        <mxCell id="loop_begin" value="LLM 推理&#10;(LLMRouter.chat)" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff9800;fontSize=13;fontStyle=1;size=0.2;" vertex="1" parent="1">
+          <mxGeometry x="330" y="388" width="180" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" style="endArrow=classic;html=1;strokeWidth=2;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="420" y="443" as="sourcePoint" /><mxPoint x="420" y="485" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Decision -->
+        <mxCell id="decision" value="LLM 返回&#10;function_call?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#e53935;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="485" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Yes → Tool execution -->
+        <mxCell id="a6" value="是 (迭代+1)" style="endArrow=classic;html=1;strokeColor=#e53935;fontStyle=1;fontColor=#e53935;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="350" y="520" as="sourcePoint" /><mxPoint x="180" y="520" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="tool_exec" value="ToolRegistry.execute()&#10;执行工具调用" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="490" width="100" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="a7" style="endArrow=classic;html=1;strokeColor=#4caf50;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="110" y="520" as="sourcePoint" /><mxPoint x="180" y="610" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Tool types -->
+        <mxCell id="tool_types" value="scan_network | scan_processes&#10;check_firewall | run_command&#10;web_search | threat_check_ip&#10;defender_quick_scan | cve_lookup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="50" y="610" width="200" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a8" style="endArrow=classic;html=1;strokeColor=#4caf50;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="250" y="643" as="sourcePoint" /><mxPoint x="350" y="643" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="inject" value="结果注入对话&#10;继续循环 (≤10轮)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="350" y="620" width="140" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="a9" style="endArrow=classic;html=1;strokeColor=#f9a825;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="490" y="643" as="sourcePoint" />
+            <mxPoint x="490" y="415" as="targetPoint" />
+            <Array as="points"><mxPoint x="600" y="643" /><mxPoint x="600" y="415" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="loop_count" value="迭代 ≤ 10" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontColor=#666;" vertex="1" parent="1">
+          <mxGeometry x="605" y="520" width="55" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- No → Return text -->
+        <mxCell id="a10" value="否 (返回文本)" style="endArrow=classic;html=1;strokeColor=#4caf50;fontStyle=1;fontColor=#4caf50;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="490" y="520" as="sourcePoint" /><mxPoint x="630" y="520" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="stream" value="流式输出&#10;(逐token返回)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="640" y="490" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="a11" style="endArrow=classic;html=1;strokeColor=#2196f3;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="705" y="550" as="sourcePoint" /><mxPoint x="705" y="610" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Save -->
+        <mxCell id="save" value="保存对话到知识库&#10;(用户确认)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=#757575;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="620" y="610" width="170" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="a12" style="endArrow=classic;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="705" y="655" as="sourcePoint" /><mxPoint x="705" y="690" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="end" value="结束" style="ellipse;whiteSpace=wrap;html=1;fillColor=#4caf50;strokeColor=#2e7d32;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="640" y="690" width="130" height="45" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

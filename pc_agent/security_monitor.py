@@ -42,8 +42,6 @@ class SecurityMonitor:
         events = []
         try:
             import win32evtlog
-            import win32evtlogutil
-            import win32security
 
             server = None  # 本地
             log_type = 'Security'

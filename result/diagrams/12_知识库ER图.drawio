@@ -1,0 +1,105 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="知识库ER图" id="er">
+    <mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 — 知识库 ER 图 (实体关系模型)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="200" y="5" width="600" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Entity: Conversation -->
+        <mxCell id="e_conv" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="250" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conv_title" value="Conversation (对话)" style="text;html=1;strokeColor=none;fillColor=#1565c0;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="250" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conv_attrs" value="PK  conversation_id: UUID&#10;    created_at: datetime&#10;    updated_at: datetime&#10;    message_count: int&#10;    title: str (前50字自动生成)&#10;    tags: list[str]&#10;    model_used: str" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="45" y="95" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conv_methods" value="方法:&#10;  + add_message(role, content)&#10;  + get_messages() → list&#10;  + to_markdown() → str&#10;  + save_to_file(path)" style="text;html=1;strokeColor=none;fillColor=#bbdefb;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="45" y="220" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Entity: Message -->
+        <mxCell id="e_msg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff9800;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="380" y="60" width="250" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="e_msg_title" value="Message (消息)" style="text;html=1;strokeColor=none;fillColor=#ff9800;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="60" width="250" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_msg_attrs" value="PK  message_id: UUID&#10;FK  conversation_id: UUID&#10;    role: &quot;user&quot; | &quot;assistant&quot; | &quot;system&quot;&#10;    content: str&#10;    timestamp: datetime&#10;    tool_calls: list[dict] | null&#10;    token_count: int" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="385" y="95" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e_msg_methods" value="方法:&#10;  + to_dict() → dict&#10;  + from_dict(data) → Message&#10;  + estimate_tokens() → int" style="text;html=1;strokeColor=none;fillColor=#ffe0b2;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="385" y="220" width="240" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Entity: VectorDocument -->
+        <mxCell id="e_vec" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f7fa;strokeColor=#00838f;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="710" y="60" width="260" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vec_title" value="VectorDocument (向量文档)" style="text;html=1;strokeColor=none;fillColor=#00838f;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="60" width="260" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vec_attrs" value="PK  vector_id: UUID&#10;FK  message_id: UUID (来源消息)&#10;    document: str (原始文本)&#10;    embedding: float[384|768]&#10;    metadata: dict&#10;    collection: str&#10;    created_at: datetime" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="715" y="95" width="250" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vec_methods" value="方法:&#10;  + embed(text) → float[]&#10;  + search(query, top_k) → list&#10;  + similarity(v1, v2) → float&#10;  + to_chroma_metadata() → dict" style="text;html=1;strokeColor=none;fillColor=#b2ebf2;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="715" y="220" width="250" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Relationships -->
+        <mxCell id="rel1" value="1" style="endArrow=none;html=1;strokeColor=#1565c0;strokeWidth=2;fontSize=12;fontStyle=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="290" y="180" as="sourcePoint" /><mxPoint x="380" y="180" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="rel1_label" value="包含 ▶" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontColor=#1565c0;" vertex="1" parent="1">
+          <mxGeometry x="310" y="160" width="60" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="rel1_m" value="*" style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#1565c0;" vertex="1" parent="1">
+          <mxGeometry x="375" y="175" width="20" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rel2" value="1" style="endArrow=none;html=1;strokeColor=#00838f;strokeWidth=2;fontSize=12;fontStyle=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="630" y="130" as="sourcePoint" /><mxPoint x="710" y="130" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="rel2_label" value="向量化 ▶" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontColor=#00838f;" vertex="1" parent="1">
+          <mxGeometry x="640" y="110" width="70" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="rel2_1" value="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#00838f;" vertex="1" parent="1">
+          <mxGeometry x="625" y="125" width="20" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="rel2_m" value="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#00838f;" vertex="1" parent="1">
+          <mxGeometry x="705" y="125" width="20" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Entity: Skill -->
+        <mxCell id="e_skill" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="390" width="250" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skill_title" value="Skill (技能文件)" style="text;html=1;strokeColor=none;fillColor=#6a1b9a;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="390" width="250" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skill_attrs" value="PK  skill_name: str (文件名 stem)&#10;    file_path: str&#10;    description: str&#10;    triggers: list[str] (触发词)&#10;    content: str (Markdown正文)&#10;    enabled: bool&#10;    category: str (user|builtin)&#10;    loaded_at: datetime" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="45" y="425" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Entity: SandboxAudit -->
+        <mxCell id="e_audit" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#c62828;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="380" y="390" width="250" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="e_audit_title" value="SandboxAudit (沙箱审计)" style="text;html=1;strokeColor=none;fillColor=#c62828;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="390" width="250" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_audit_attrs" value="    execution_id: str (12位hex)&#10;    timestamp: datetime (UTC)&#10;    command: str (截断200字符)&#10;    allowed: bool&#10;    reason: str&#10;    exit_code: int | null&#10;    duration_ms: float | null&#10;    output_size_bytes: int | null&#10;    pid: int | null" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="385" y="425" width="240" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Note: not traditional RDBMS -->
+        <mxCell id="note_er" value="📌 说明: 本系统以实时监控为主，不涉及传统关系型数据库。ChromaDB 为向量数据库 (NoSQL)，配置/日志/技能为文件存储 (YAML/Markdown/JSON Lines)。上图展示的是各实体的逻辑数据模型而非物理数据库表结构。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=10;fontColor=#333;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="40" y="610" width="930" height="45" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

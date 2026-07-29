@@ -1,0 +1,97 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="系统功能模块图" id="modules">
+    <mxGraphModel dx="1100" dy="850" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 — 系统功能模块图" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="250" y="10" width="600" height="35" as="geometry" />
+        </mxCell>
+        <!-- Root -->
+        <mxCell id="root" value="AI 网络安全管家" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a237e;strokeColor=#0d1b5e;fontColor=#fff;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="55" width="240" height="50" as="geometry" />
+        </mxCell>
+        <!-- Lines from root -->
+        <mxCell id="r1" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="380" y="80" as="sourcePoint" /><mxPoint x="130" y="140" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="r2" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="420" y="105" as="sourcePoint" /><mxPoint x="350" y="140" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="r3" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="105" as="sourcePoint" /><mxPoint x="500" y="140" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="r4" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="580" y="105" as="sourcePoint" /><mxPoint x="650" y="140" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="r5" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="620" y="80" as="sourcePoint" /><mxPoint x="870" y="140" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Module 1: 安全监控 -->
+        <mxCell id="m1_title" value="安全监控模块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1565c0;strokeColor=#0d47a1;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="140" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m1_items" value="• 网络连接扫描 (NetworkMonitor)&#10;• 进程行为检测 (ProcessMonitor)&#10;• 防火墙检查 (FirewallChecker)&#10;• 安全日志审计 (SecurityMonitor)&#10;• 系统资源监控 (CPU/内存)&#10;• 安全等级综合评估" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="50" y="180" width="160" height="115" as="geometry" />
+        </mxCell>
+
+        <!-- Module 2: AI Agent -->
+        <mxCell id="m2_title" value="AI Agent 智能模块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e65100;strokeColor=#bf360c;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="140" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m2_items" value="• ReAct 核心循环 (AgentCore)&#10;• 多模型 LLM 路由 (LLMRouter)&#10;• 25+ 工具注册表 (ToolRegistry)&#10;• MCP Client/Server&#10;• 安全沙箱 (6层隔离)&#10;• 威胁情报 (OTX+NVD)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#e65100;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="270" y="180" width="160" height="115" as="geometry" />
+        </mxCell>
+
+        <!-- Module 3: 用户界面 -->
+        <mxCell id="m3_title" value="用户界面模块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2e7d32;strokeColor=#1b5e20;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="490" y="140" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m3_items" value="• PyQt5 桌面 GUI (暗色主题)&#10;• AI 对话窗口 (流式输出)&#10;• Flask Web Dashboard (:5000)&#10;• CLI 命令行 (agent_cli.py)&#10;• 系统托盘 (pystray)&#10;• REST API 接口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="490" y="180" width="160" height="115" as="geometry" />
+        </mxCell>
+
+        <!-- Module 4: 设备通信 -->
+        <mxCell id="m4_title" value="设备通信模块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6a1b9a;strokeColor=#4a148c;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="140" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m4_items" value="• Serial/WiFi 双模连接&#10;• 自动 COM 口检测&#10;• 心跳保活 (2秒)&#10;• 断连自动恢复 (≤10次)&#10;• JSON over Serial 协议&#10;• 防重入锁保护" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="710" y="180" width="160" height="115" as="geometry" />
+        </mxCell>
+
+        <!-- Module 5: 角色系统 -->
+        <mxCell id="m5_title" value="角色陪伴系统" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c62828;strokeColor=#b71c1c;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="340" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m5_items" value="• 8 种表情映射&#10;• 12类 60+ 句台词库&#10;• LLM 动态台词生成&#10;• 去重 + 冷却机制&#10;• 自定义角色导入 (JSON)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#c62828;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="50" y="380" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Module 6: 知识库 -->
+        <mxCell id="m6_title" value="知识库 &amp; Skills" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#00838f;strokeColor=#006064;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="340" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m6_items" value="• ChromaDB 向量存储&#10;• MiniLM / TF-IDF 双模&#10;• 语义检索 (RAG)&#10;• Skills .md 热加载&#10;• 对话自动保存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f7fa;strokeColor=#00838f;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="270" y="380" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Module 7: ESP32 固件 -->
+        <mxCell id="m7_title" value="ESP32 固件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#37474f;strokeColor=#263238;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="490" y="340" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m7_items" value="• OLED 双屏 (表情+仪表盘)&#10;• 30fps 角色动画&#10;• 蜂鸣器/LED 告警&#10;• 按键屏幕切换&#10;• T-Display 彩屏支持" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eceff1;strokeColor=#37474f;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="490" y="380" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Module 8: 扩展能力 -->
+        <mxCell id="m8_title" value="扩展能力" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f57c00;strokeColor=#e65100;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="340" width="160" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="m8_items" value="• MCP 协议 (Client+Server)&#10;• AlienVault OTX 威胁情报&#10;• NIST NVD CVE 查询&#10;• DuckDuckGo Web 搜索&#10;• 用户自定义 Skills" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#f57c00;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="710" y="380" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Inter-module relations -->
+        <mxCell id="rel1" value="推送状态" style="endArrow=classic;html=1;strokeColor=#666;dashed=1;fontSize=9;fontColor=#666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="130" y="295" as="sourcePoint" /><mxPoint x="130" y="340" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="rel2" value="数据源" style="endArrow=classic;html=1;strokeColor=#666;dashed=1;fontSize=9;fontColor=#666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="350" y="295" as="sourcePoint" /><mxPoint x="350" y="340" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="rel3" value="JSON指令" style="endArrow=classic;html=1;strokeColor=#666;dashed=1;fontSize=9;fontColor=#666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="790" y="295" as="sourcePoint" /><mxPoint x="570" y="340" as="targetPoint" /></mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

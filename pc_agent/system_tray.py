@@ -36,10 +36,7 @@ class SystemTrayApp:
                 return img
 
             def on_click(icon, item):
-                if str(item) == '打开 Dashboard':
-                    import webbrowser
-                    webbrowser.open('http://127.0.0.1:5000')
-                elif str(item) == '立即扫描':
+                if str(item) == '立即扫描':
                     self.logger.info("手动触发安全扫描")
                 elif str(item) == '退出':
                     icon.stop()
@@ -57,7 +54,6 @@ class SystemTrayApp:
                     pystray.MenuItem('AI: 空闲', None, enabled=False),
                     pystray.Menu.SEPARATOR,
                     pystray.MenuItem('🔍 立即扫描', on_click),
-                    pystray.MenuItem('📊 打开 Dashboard', on_click),
                     pystray.Menu.SEPARATOR,
                     pystray.MenuItem('❌ 退出', on_click),
                 )
@@ -90,7 +86,6 @@ class SystemTrayApp:
                             pystray.MenuItem(f"AI: {state['ai_status']}", None, enabled=False),
                             pystray.Menu.SEPARATOR,
                             pystray.MenuItem('🔍 立即扫描', on_click),
-                            pystray.MenuItem('📊 打开 Dashboard', on_click),
                             pystray.Menu.SEPARATOR,
                             pystray.MenuItem('❌ 退出', on_click),
                         )

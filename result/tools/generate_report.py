@@ -450,7 +450,7 @@ toc_entries = [
     ('6  系统实现', 1),
     ('6.1  桌面 GUI 仪表盘', 2),
     ('6.2  AI 对话窗口', 2),
-    ('6.3  Web Dashboard', 2),
+    ('6.3  桌面GUI详解', 2),
     ('6.4  ESP32 硬件终端', 2),
     ('7  系统测试', 1),
     ('7.1  功能测试', 2),
@@ -727,7 +727,7 @@ modules = [
     ('角色系统模块', '8种表情映射、12类60+句台词库、LLM动态台词、自定义角色导入'),
     ('知识库模块', 'ChromaDB向量存储、3级Embedding降级、语义检索、对话保存'),
     ('扩展能力模块', 'MCP Client/Server、Skills技能热加载、Web搜索、威胁情报查询'),
-    ('用户界面模块', 'PyQt5桌面GUI、AI对话窗口、Flask Web Dashboard、CLI Agent、系统托盘'),
+    ('用户界面模块', 'PyQt5桌面GUI、AI对话窗口、CLI Agent、系统托盘'),
 ]
 for name, desc in modules:
     body_bold_prefix(f'{name}：', desc, indent=True)
@@ -859,10 +859,7 @@ body('（2）AI对话窗口（chat_window.py, 1239行）：流式输出对话、
      '（快速扫描/病毒检测/漏洞检查/安全报告/修复建议）、知识库检索增强（RAG）、'
      '对话保存确认、30秒看门狗防卡死。', indent=True)
 
-body('（3）Web Dashboard（web_dashboard.py, 363行）：Flask开发服务器（:5000），'
-     'Morandi配色深色UI，3秒AJAX轮询实时更新，REST API接口（/api/state, /api/chat）。', indent=True)
-
-body('（4）CLI Agent（agent_cli.py, 315行）：交互式对话模式、单次查询模式、'
+body('（3）CLI Agent（agent_cli.py, 315行）：交互式对话模式、单次查询模式、'
      'Slash命令（/tools /model /clear /save /kb）、彩色日志输出。', indent=True)
 
 doc.add_page_break()
@@ -1161,7 +1158,7 @@ deps = [
     ('Python 3.10+', '主控语言'),
     ('psutil 7.2.2', '系统进程/网络监控'),
     ('PyQt5 5.15.11', '桌面GUI框架'),
-    ('Flask 3.1.3', 'Web Dashboard'),
+    ('PyQt5 5.15.11', '桌面GUI框架'),
     ('pyserial 3.5', 'ESP32串口通信'),
     ('pywin32 305', 'Windows EventLog API'),
     ('requests 2.34.2', 'LLM HTTP客户端'),

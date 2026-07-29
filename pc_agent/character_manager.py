@@ -9,7 +9,7 @@ import logging
 import random
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from llm_client import MultiLLMClient
@@ -31,7 +31,7 @@ class CharacterManager:
     EXP_WORRIED = 3
     EXP_ANGRY = 4
     EXP_SLEEP = 5
-    EXP_LOVE = 6
+    # 6 = EXP_LOVE (已废弃)
     EXP_GREETING = 7
 
     # 默认角色台词库
@@ -275,26 +275,6 @@ class CharacterManager:
             self.logger.debug(f"LLM 安全分析失败: {e}")
             return None
 
-    def explain_threat_with_llm(self, threat_desc: str) -> Optional[str]:
-        """使用 LLM 通俗解释威胁"""
-        if not self._llm_enabled or self.llm is None:
-            return None
-        try:
-            return self.llm.explain_threat(threat_desc)
-        except Exception as e:
-            self.logger.debug(f"LLM 威胁解释失败: {e}")
-            return None
-
-    def smart_chat(self, user_message: str) -> Optional[str]:
-        """与角色自由对话 (LLM驱动)"""
-        if not self._llm_enabled or self.llm is None:
-            return None
-        try:
-            return self.llm.chat_simple(user_message, "companion", max_tokens=80)
-        except Exception as e:
-            self.logger.debug(f"LLM 对话失败: {e}")
-            return None
-
     @property
     def is_llm_available(self) -> bool:
         return self._llm_enabled and time.time() > self._llm_cooldown_until
@@ -381,42 +361,6 @@ class CharacterManager:
             {"cmd": "expression", "expression": self.EXP_ANGRY},
             {"cmd": "say", "text": f"! {message}"},
         ]
-
-    # ==================== 角色配置 ====================
-
-    def export_default_config(self, path: str):
-        """导出默认角色配置 (供自定义修改)"""
-        config = {
-            "name": self._character_name,
-            "version": "1.0",
-            "description": "默认网络安全守护角色 - 安小盾",
-            "personality": {
-                "trait": "认真又可爱的网络安全守护者",
-                "likes": ["网络安全", "主人夸她", "安静的网络环境"],
-                "dislikes": ["黑客攻击", "防火墙关闭", "CPU过热"],
-            },
-            "lines": self.DEFAULT_LINES,
-            "expressions": {
-                "idle": "普通脸，偶尔眨眼",
-                "happy": "开心笑 ^_^，安全无事时",
-                "working": "认真专注，AI工作中",
-                "worried": "担心表情，检测到异常",
-                "angry": "生气 >_<，检测到攻击",
-                "sleep": "睡觉 Zzz，AI离线",
-                "love": "爱心眼，被夸奖时",
-                "greeting": "闪闪眼，开机/主动互动",
-            },
-            "behavior": {
-                "auto_speak_interval": 15,    # 自动说话间隔(秒)
-                "idle_animation": True,        # 空闲动画
-                "blink_interval": [2000, 5000],# 眨眼间隔(ms)
-                "bubble_duration": 4000,       # 气泡显示时长(ms)
-                "shows_threat_count": True,    # 显示威胁数量
-            },
-        }
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-        self.logger.info(f"✅ 角色配置已导出: {path}")
 
     @property
     def name(self) -> str:

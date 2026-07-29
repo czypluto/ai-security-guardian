@@ -6,7 +6,6 @@ v1.1: 改进超时处理, 添加检查失败降级逻辑, 避免阻塞主扫描�
 
 import logging
 import subprocess
-import threading
 import time
 from typing import Dict, Optional
 
@@ -197,32 +196,3 @@ class FirewallChecker:
                 pass
         return {}
 
-    def get_blocked_connections(self) -> int:
-        """获取被防火墙阻止的连接数"""
-        ps_result = _run_powershell(
-            '(Get-NetFirewallRule -Action Block -Enabled True -Direction Inbound | '
-            'Measure-Object).Count',
-            timeout=SHORT_TIMEOUT
-        )
-        if ps_result:
-            try:
-                return int(ps_result)
-            except ValueError:
-                pass
-        return 0
-
-    def enable_firewall(self) -> bool:
-        """开启防火墙"""
-        try:
-            subprocess.run(
-                ['netsh', 'advfirewall', 'set', 'allprofiles', 'state', 'on'],
-                capture_output=True, timeout=SHORT_TIMEOUT,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                encoding="utf-8", errors="replace",
-            )
-            self.logger.info("✅ 防火墙已开启")
-            self._last_check = 0  # 清除缓存
-            return True
-        except Exception as e:
-            self.logger.error(f"❌ 开启防火墙失败: {e}")
-            return False

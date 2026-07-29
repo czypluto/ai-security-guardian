@@ -13,7 +13,6 @@ try:
         QVBoxLayout, QHBoxLayout, QGridLayout, QProgressBar,
         QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu,
         QAction, QScrollArea, QSizePolicy, QSpacerItem, QPushButton,
-        QGraphicsDropShadowEffect
     )
     from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, pyqtProperty, QPoint
     from PyQt5.QtGui import (
@@ -28,7 +27,6 @@ except ImportError:
     QVBoxLayout = QHBoxLayout = QGridLayout = QProgressBar = object
     QListWidget = QListWidgetItem = QSystemTrayIcon = QMenu = object
     QAction = QScrollArea = QSizePolicy = QSpacerItem = QPushButton = object
-    QGraphicsDropShadowEffect = object
     QTimer = QPropertyAnimation = pyqtProperty = QPoint = object
     QIcon = QPixmap = QPainter = QColor = QPen = QBrush = object
     QFont = QPolygon = QFontDatabase = object
@@ -244,15 +242,6 @@ def create_shield_icon(color_hex: str, size: int = 64) -> QIcon:
 
     painter.end()
     return QIcon(pixmap)
-
-
-def add_shadow(widget, blur=20, y_offset=2, color=QColor(0, 0, 0, 40)):
-    """为控件添加柔和阴影"""
-    shadow = QGraphicsDropShadowEffect(widget)
-    shadow.setBlurRadius(blur)
-    shadow.setOffset(0, y_offset)
-    shadow.setColor(color)
-    widget.setGraphicsEffect(shadow)
 
 
 # ============================================================

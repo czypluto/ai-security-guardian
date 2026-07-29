@@ -1,0 +1,141 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="系统主流业务流程图" id="flow">
+    <mxGraphModel dx="1000" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="AI网络安全管家 — 系统主流业务流程图" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="200" y="10" width="600" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Start -->
+        <mxCell id="start" value="系统启动" style="ellipse;whiteSpace=wrap;html=1;fillColor=#4caf50;strokeColor=#2e7d32;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="410" y="60" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a1" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="110" as="sourcePoint" /><mxPoint x="500" y="145" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Load Config -->
+        <mxCell id="load_config" value="加载配置文件&#10;(config.yaml)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#2196f3;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="400" y="145" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a2" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="200" as="sourcePoint" /><mxPoint x="500" y="235" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Init Modules -->
+        <mxCell id="init_modules" value="初始化安全监控模块&#10;(Network/Process/Firewall/Security)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#2196f3;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="370" y="235" width="260" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a3" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="290" as="sourcePoint" /><mxPoint x="500" y="325" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Connect ESP32 -->
+        <mxCell id="connect_esp" value="连接 ESP32 设备&#10;(Serial 自动检测 / WiFi)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#2196f3;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="325" width="220" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a4" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="380" as="sourcePoint" /><mxPoint x="500" y="415" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Start UI -->
+        <mxCell id="start_ui" value="启动用户界面&#10;(GUI / Web / CLI / Tray)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#2196f3;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="390" y="415" width="220" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a5" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="470" as="sourcePoint" /><mxPoint x="500" y="510" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Loop Begin -->
+        <mxCell id="loop_begin" value="启动后台扫描循环&#10;(每5秒)" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff9800;fontSize=12;fontStyle=1;size=0.2;" vertex="1" parent="1">
+          <mxGeometry x="395" y="510" width="210" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a6" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="565" as="sourcePoint" /><mxPoint x="500" y="600" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Scan Steps -->
+        <mxCell id="scan1" value="① 网络扫描&#10;psutil.net_connections()&#10;检测可疑IP/端口/C2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="180" y="600" width="180" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="scan2" value="② 进程扫描&#10;psutil.process_iter()&#10;黑名单+资源异常" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="410" y="600" width="180" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="scan3" value="③ 防火墙检查&#10;netsh→PS→sc&#10;多级降级 + 缓存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="640" y="600" width="180" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a7" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="270" y="655" as="sourcePoint" /><mxPoint x="450" y="690" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="a8" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="655" as="sourcePoint" /><mxPoint x="500" y="690" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="a9" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="730" y="655" as="sourcePoint" /><mxPoint x="550" y="690" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Calculate -->
+        <mxCell id="calculate" value="综合计算安全等级&#10;safe / warning / danger" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#ff9800;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="690" width="240" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a10" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="745" as="sourcePoint" /><mxPoint x="500" y="780" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Update State -->
+        <mxCell id="update_state" value="更新全局状态字典 (state dict)&#10;推送到所有消费者" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="360" y="780" width="280" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a11" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="835" as="sourcePoint" /><mxPoint x="500" y="860" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Decision: Threat? -->
+        <mxCell id="threat_check" value="检测到威胁?&#10;(warning/danger)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#e53935;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="420" y="860" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Yes branch -->
+        <mxCell id="a12" value="是" style="endArrow=classic;html=1;strokeColor=#e53935;fontStyle=1;fontColor=#e53935;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="420" y="895" as="sourcePoint" /><mxPoint x="260" y="895" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="llm_analysis" value="触发 LLM 安全分析&#10;+ 角色告警台词&#10;+ 蜂鸣器/LED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#e53935;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="130" y="870" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="a13" style="endArrow=classic;html=1;strokeColor=#e53935;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="250" y="895" as="sourcePoint" /><mxPoint x="420" y="930" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- No branch -->
+        <mxCell id="a14" value="否" style="endArrow=classic;html=1;strokeColor=#4caf50;fontStyle=1;fontColor=#4caf50;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="500" y="930" as="sourcePoint" /><mxPoint x="500" y="960" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <!-- Sleep -->
+        <mxCell id="sleep" value="等待 5 秒&#10;进入下一轮扫描" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=#757575;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="400" y="960" width="200" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- loop back -->
+        <mxCell id="a15" style="endArrow=classic;html=1;strokeColor=#333;strokeWidth=2;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="500" y="1005" as="sourcePoint" />
+            <mxPoint x="500" y="1060" as="targetPoint" />
+            <Array as="points"><mxPoint x="900" y="1030" /><mxPoint x="900" y="537" /><mxPoint x="500" y="537" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="loop_label" value="循环" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontColor=#666;" vertex="1" parent="1">
+          <mxGeometry x="860" y="780" width="40" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#bdbdbd;" vertex="1" parent="1">
+          <mxGeometry x="720" y="60" width="240" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_title" value="安全等级判定逻辑" style="text;html=1;strokeColor=none;fillColor=none;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="65" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="🔴 Danger: 防火墙/Defender关闭&#10;或 威胁≥3, 可疑IP≥5" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;" vertex="1" parent="1">
+          <mxGeometry x="740" y="90" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="🟡 Warning: 威胁≥1, 可疑IP≥2&#10;或 可疑进程≥1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;" vertex="1" parent="1">
+          <mxGeometry x="740" y="120" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="🟢 Safe: 无威胁, 系统正常" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;" vertex="1" parent="1">
+          <mxGeometry x="740" y="150" width="200" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="扫描间隔: 5秒 | 心跳: 2秒" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;fontColor=#666;" vertex="1" parent="1">
+          <mxGeometry x="740" y="180" width="200" height="20" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

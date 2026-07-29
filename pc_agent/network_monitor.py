@@ -173,7 +173,3 @@ class NetworkMonitor:
             pass
         return sorted(set(ports))
 
-    def reset_history(self):
-        """重置连接历史"""
-        self._conn_history.clear()
-        self._blocked_ips.clear()

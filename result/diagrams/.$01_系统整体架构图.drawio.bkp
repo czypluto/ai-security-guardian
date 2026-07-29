@@ -1,0 +1,193 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="系统整体架构图" id="arch">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- 标题 -->
+        <mxCell id="title" value="AI网络安全管家 — 系统整体架构图" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="300" y="10" width="600" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Layer 4: 用户界面层 ============ -->
+        <mxCell id="layer4_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;strokeWidth=2;dashed=1;opacity=50;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="1120" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="layer4_label" value="用户界面层 (User Interface Layer)" style="text;html=1;strokeColor=none;fillColor=#4caf50;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontStyle=1;fontColor=#ffffff;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="220" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ui_cli" value="CLI 命令行&#10;agent_cli.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="100" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_gui" value="PyQt5 桌面GUI&#10;desktop_gui.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="230" y="100" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_chat" value="AI 对话窗口&#10;chat_window.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="400" y="100" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_web" value="Web Dashboard&#10;Flask :5000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="570" y="100" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_tray" value="系统托盘&#10;system_tray.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="740" y="100" width="150" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 3 → 4 arrow -->
+        <mxCell id="arrow_3_4" value="" style="endArrow=classic;startArrow=classic;html=1;strokeWidth=3;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="600" y="190" as="sourcePoint" />
+            <mxPoint x="600" y="215" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============ Layer 3: AI Agent 层 ============ -->
+        <mxCell id="layer3_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff9800;strokeWidth=2;dashed=1;opacity=50;" vertex="1" parent="1">
+          <mxGeometry x="40" y="215" width="1120" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="layer3_label" value="AI Agent 层 (Intelligent Brain Layer)" style="text;html=1;strokeColor=none;fillColor=#ff9800;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontStyle=1;fontColor=#ffffff;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="215" width="220" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ai_react" value="ReAct 核心循环&#10;AgentCore" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="260" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_llm" value="LLM 路由器&#10;LLMRouter&#10;(DeepSeek/智谱/硅基)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="230" y="255" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_tools" value="工具注册表&#10;ToolRegistry&#10;(25+ 安全工具)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="390" y="255" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_mcp" value="MCP Client/Server&#10;JSON-RPC 2.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="550" y="255" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_skills" value="Skills 技能加载器&#10;SkillManager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="710" y="255" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_sandbox" value="安全沙箱&#10;Sandbox (6层)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="870" y="255" width="130" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_kb" value="知识库&#10;KnowledgeBase&#10;(ChromaDB)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="330" width="150" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_otx" value="OTX威胁情报 | NVD漏洞库 | Web搜索" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="230" y="330" width="300" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 2 → 3 arrow -->
+        <mxCell id="arrow_2_3" value="" style="endArrow=classic;startArrow=classic;html=1;strokeWidth=3;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="600" y="375" as="sourcePoint" />
+            <mxPoint x="600" y="400" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============ Layer 2: PC Agent 监控层 ============ -->
+        <mxCell id="layer2_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#2196f3;strokeWidth=2;dashed=1;opacity=50;" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="1120" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="layer2_label" value="PC Agent 监控层 (Security Monitor Layer)" style="text;html=1;strokeColor=none;fillColor=#2196f3;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontStyle=1;fontColor=#ffffff;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="240" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pc_controller" value="GuardianController&#10;主控制器 (中央调度器)&#10;维护全局 state 字典" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="440" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pc_net" value="NetworkMonitor&#10;网络连接扫描&#10;(psutil)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="440" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="pc_proc" value="ProcessMonitor&#10;进程行为检测&#10;(psutil)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="220" y="440" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="pc_fw" value="FirewallChecker&#10;防火墙/Defender&#10;(netsh+PS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="630" y="440" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="pc_sec" value="SecurityMonitor&#10;安全事件日志&#10;(win32evtlog)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="790" y="440" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="pc_char" value="CharacterManager&#10;安小盾角色系统" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="950" y="440" width="130" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="pc_device" value="DeviceBridge (Serial/WiFi)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#2196f3;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="950" y="520" width="130" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- arrows from controller to modules -->
+        <mxCell id="c_n" style="endArrow=classic;html=1;strokeColor=#2196f3;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="400" y="475" as="sourcePoint" /><mxPoint x="200" y="475" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="c_p" style="endArrow=classic;html=1;strokeColor=#2196f3;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="400" y="490" as="sourcePoint" /><mxPoint x="220" y="490" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="c_f" style="endArrow=classic;html=1;strokeColor=#2196f3;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="475" as="sourcePoint" /><mxPoint x="630" y="475" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="c_s" style="endArrow=classic;html=1;strokeColor=#2196f3;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="490" as="sourcePoint" /><mxPoint x="790" y="490" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Layer 1 → 2 arrow -->
+        <mxCell id="arrow_1_2" value="" style="endArrow=classic;startArrow=classic;html=1;strokeWidth=3;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="600" y="560" as="sourcePoint" />
+            <mxPoint x="600" y="585" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============ Layer 1: 硬件层 ============ -->
+        <mxCell id="layer1_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#e91e63;strokeWidth=2;dashed=1;opacity=50;" vertex="1" parent="1">
+          <mxGeometry x="40" y="585" width="1120" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="layer1_label" value="硬件层 (Hardware Layer)" style="text;html=1;strokeColor=none;fillColor=#e91e63;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontStyle=1;fontColor=#ffffff;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="585" width="180" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="hw_esp32" value="ESP32 微控制器&#10;(Xtensa LX6 双核 240MHz)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#e91e63;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="625" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hw_oled" value="0.96&quot; OLED&#10;(SSD1306 I2C)&#10;128×64 像素" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#e91e63;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="625" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hw_buzzer" value="蜂鸣器 (D5)&#10;+ RGB LED (D4)&#10;声光告警" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#e91e63;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="560" y="625" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hw_tft" value="T-Display (可选)&#10;TFT 彩屏 135×240&#10;RGB565" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#e91e63;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="750" y="625" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- arrows ESP32 → peripherals -->
+        <mxCell id="e_o" style="endArrow=classic;html=1;strokeColor=#e91e63;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="300" y="655" as="sourcePoint" /><mxPoint x="190" y="655" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="e_b" style="endArrow=classic;html=1;strokeColor=#e91e63;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="655" as="sourcePoint" /><mxPoint x="560" y="655" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="e_t" style="endArrow=classic;html=1;strokeColor=#e91e63;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="500" y="670" as="sourcePoint" /><mxPoint x="750" y="670" as="targetPoint" /></mxGeometry></mxCell>
+
+        <!-- Protocol legend -->
+        <mxCell id="protocol_serial" value="↕ JSON over Serial (115200bps) / WiFi TCP" style="text;html=1;strokeColor=#666;fillColor=#f5f5f5;align=center;fontSize=10;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="555" width="300" height="22" as="geometry" />
+        </mxCell>
+
+        <!-- Side: Data source -->
+        <mxCell id="sidebar" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eceff1;strokeColor=#607d8b;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="740" width="1120" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="sidebar_label" value="数据源" style="text;html=1;strokeColor=none;fillColor=#607d8b;align=center;verticalAlign=middle;fontSize=11;fontStyle=1;fontColor=#fff;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="740" width="60" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_psutil" value="psutil&#10;系统API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607d8b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="770" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_netsh" value="netsh&#10;防火墙" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607d8b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="170" y="770" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_ps" value="PowerShell&#10;Defender" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607d8b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="280" y="770" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_evt" value="win32evtlog&#10;事件日志" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607d8b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="390" y="770" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_llm" value="LLM API&#10;DeepSeek/智谱" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607d8b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="500" y="770" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_otx" value="OTX/NVD&#10;威胁情报" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607d8b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="610" y="770" width="90" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_chromadb" value="ChromaDB&#10;向量存储" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfd8dc;strokeColor=#607d8b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="720" y="770" width="90" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -11,18 +11,6 @@ import psutil
 class ProcessMonitor:
     """进程行为监控"""
 
-    # Windows 系统进程 (白名单)
-    SYSTEM_PROCESSES = {
-        'system', 'system idle process', 'registry', 'smss.exe',
-        'csrss.exe', 'wininit.exe', 'winlogon.exe', 'services.exe',
-        'lsass.exe', 'svchost.exe', 'dwm.exe', 'explorer.exe',
-        'taskhostw.exe', 'spoolsv.exe', 'sihost.exe', 'taskhost.exe',
-        'fontdrvhost.exe', 'ctfmon.exe', 'searchindexer.exe',
-        'searchui.exe', 'startmenuexperiencehost.exe', 'runtimebroker.exe',
-        'shellexperiencehost.exe', 'textinputhost.exe', 'securityhealthservice.exe',
-        'securityhealthsystray.exe', 'msmpeng.exe', 'nissrv.exe',
-    }
-
     # 已知黑客工具特征名
     MALICIOUS_NAMES = {
         'mimikatz', 'mimikatz.exe', 'mimidrv.sys',
@@ -47,7 +35,6 @@ class ProcessMonitor:
         self.logger = logger
         self._suspicious_names = set(config.get('suspicious_names', []))
         self._suspicious_names.update(self.MALICIOUS_NAMES)
-        self._previous_scan = {}
         self.cpu_threshold = config.get('cpu_threshold', 80)
         self.mem_threshold = config.get('mem_threshold', 80)
 
@@ -60,7 +47,6 @@ class ProcessMonitor:
             'suspicious_details': [],
             'high_cpu_count': 0,
             'high_cpu_details': [],
-            'high_mem_count': 0,
             'cpu_percent': psutil.cpu_percent(interval=0.5),
         }
 
@@ -95,17 +81,6 @@ class ProcessMonitor:
                             'cpu': f"{cpu:.1f}%",
                         })
 
-                    # 3. 检查异常内存
-                    mem = info['memory_percent'] or 0
-                    if mem > self.mem_threshold:
-                        result['high_mem_count'] += 1
-
-                    # 4. 检查新增进程 (对比上次扫描)
-                    if pid not in self._previous_scan:
-                        if not self._is_system_process(proc_name):
-                            # 新出现的非系统进程
-                            pass  # 可在详细模式记录
-
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
                 except Exception as e:
@@ -114,10 +89,6 @@ class ProcessMonitor:
 
         except Exception as e:
             self.logger.error(f"进程扫描异常: {e}")
-
-        # 更新历史
-        self._previous_scan = {p.pid: p.info['name']
-                               for p in psutil.process_iter(['pid', 'name'])}
 
         return result
 
@@ -129,38 +100,3 @@ class ProcessMonitor:
                 return True
         return False
 
-    def _is_system_process(self, name: str) -> bool:
-        """检查是否为系统进程"""
-        return name.lower() in self.SYSTEM_PROCESSES
-
-    def get_process_tree(self, pid: int) -> List[Dict]:
-        """获取进程树"""
-        tree = []
-        try:
-            proc = psutil.Process(pid)
-            tree.append({
-                'pid': proc.pid,
-                'name': proc.name(),
-                'children': [{'pid': c.pid, 'name': c.name()} for c in proc.children(recursive=True)],
-            })
-        except Exception:
-            pass
-        return tree
-
-    def kill_process(self, pid: int) -> bool:
-        """终止指定进程 (需管理员权限)"""
-        try:
-            proc = psutil.Process(pid)
-            proc.terminate()
-            proc.wait(timeout=5)
-            self.logger.info(f"✅ 已终止进程: {proc.name()} (PID:{pid})")
-            return True
-        except psutil.NoSuchProcess:
-            self.logger.warning(f"进程 PID:{pid} 已不存在")
-            return True
-        except psutil.AccessDenied:
-            self.logger.error(f"❌ 权限不足, 无法终止 PID:{pid}")
-            return False
-        except Exception as e:
-            self.logger.error(f"❌ 终止进程失败: {e}")
-            return False

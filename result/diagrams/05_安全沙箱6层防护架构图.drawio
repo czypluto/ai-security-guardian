@@ -1,0 +1,113 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="安全沙箱6层防护架构图" id="sandbox">
+    <mxGraphModel dx="900" dy="750" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="750" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 — 安全沙箱 6 层防护架构图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="150" y="8" width="600" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Outer Box -->
+        <mxCell id="outer" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eceff1;strokeColor=#607d8b;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="60" y="55" width="780" height="620" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 6 -->
+        <mxCell id="l6_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#c62828;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="80" y="65" width="740" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="l6_num" value="Layer 6" style="text;html=1;strokeColor=none;fillColor=#c62828;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="90" y="73" width="70" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l6_title" value="审计日志 (Audit Log)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#c62828;align=left;" vertex="1" parent="1">
+          <mxGeometry x="170" y="73" width="250" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l6_desc" value="每次命令执行记录到 sandbox_audit.log (JSON Lines)&#10;记录: 时间戳 | 命令 | 是否允许 | 退出码 | 耗时 | PID | 输出大小" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="100" y="105" width="700" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 5 -->
+        <mxCell id="l5_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#e65100;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="110" y="160" width="700" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="l5_num" value="Layer 5" style="text;html=1;strokeColor=none;fillColor=#e65100;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="168" width="70" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l5_title" value="文件系统守卫 (Filesystem Guard)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#e65100;align=left;" vertex="1" parent="1">
+          <mxGeometry x="200" y="168" width="300" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l5_desc" value="禁止写入非授权目录 (仅允许 %TEMP% 等白名单路径)&#10;所有文件系统操作受到监控和拦截" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="130" y="200" width="660" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 4 -->
+        <mxCell id="l4_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="140" y="255" width="660" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="l4_num" value="Layer 4" style="text;html=1;strokeColor=none;fillColor=#f9a825;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="150" y="263" width="70" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l4_title" value="资源限制 (Resource Limits)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#f9a825;align=left;" vertex="1" parent="1">
+          <mxGeometry x="230" y="263" width="280" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l4_desc" value="超时: 30秒 | 内存上限: 64MB | 输出上限: 16KB&#10;subprocess.communicate(timeout=30) + stdout[:16384] 截断" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="160" y="295" width="620" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 3 -->
+        <mxCell id="l3_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="170" y="350" width="620" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_num" value="Layer 3" style="text;html=1;strokeColor=none;fillColor=#2e7d32;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="358" width="70" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_title" value="Restricted Token (受限令牌)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#2e7d32;align=left;" vertex="1" parent="1">
+          <mxGeometry x="260" y="358" width="300" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l3_desc" value="剥离管理员权限 (SeDebugPrivilege 等危险特权)&#10;进程以最低权限运行，防止提权攻击" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="190" y="390" width="580" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 2 -->
+        <mxCell id="l2_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="200" y="445" width="580" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_num" value="Layer 2" style="text;html=1;strokeColor=none;fillColor=#1565c0;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="210" y="453" width="70" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_title" value="Windows Job Object (内核级隔离)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#1565c0;align=left;" vertex="1" parent="1">
+          <mxGeometry x="290" y="453" width="350" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l2_desc" value="ctypes 调用 kernel32.dll → CreateJobObjectW → SetInformationJobObject&#10;KILL_ON_JOB_CLOSE | ActiveProcessLimit=1 | 桌面隔离 (UI Restrictions)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="220" y="485" width="540" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 1 -->
+        <mxCell id="l1_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="230" y="540" width="540" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_num" value="Layer 1" style="text;html=1;strokeColor=none;fillColor=#6a1b9a;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="240" y="548" width="70" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_title" value="命令白名单 (Command Whitelist)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#6a1b9a;align=left;" vertex="1" parent="1">
+          <mxGeometry x="320" y="548" width="280" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="l1_desc" value="19 个安全命令 (ipconfig/netstat/tasklist/whoami/...) + 限定参数&#10;20+ 危险模式拦截 (del/format/shutdown/reg/net user/&gt;/|/&amp;)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="250" y="580" width="500" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- fail-closed -->
+        <mxCell id="failclosed" value="⚡ 设计原则: fail-closed — 任何一层验证失败 → 默认拒绝执行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b71c1c;strokeColor=#880e0e;fontColor=#fff;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="640" width="440" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows between layers -->
+        <mxCell id="arl6" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="820" y="150" as="sourcePoint" /><mxPoint x="820" y="160" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="arl5" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="810" y="245" as="sourcePoint" /><mxPoint x="810" y="255" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="arl4" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="800" y="340" as="sourcePoint" /><mxPoint x="800" y="350" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="arl3" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="790" y="435" as="sourcePoint" /><mxPoint x="790" y="445" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="arl2" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="780" y="530" as="sourcePoint" /><mxPoint x="780" y="540" as="targetPoint" /></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

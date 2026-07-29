@@ -17,7 +17,6 @@ class AIStatusTracker:
     def __init__(self, config: dict, logger: logging.Logger):
         self.config = config
         self.logger = logger
-        self._api_url = config.get('api_url', 'http://localhost:11434')
         self._last_status = 'idle'
         self._status_file = Path(os.environ.get('TEMP', '/tmp')) / 'ai_guardian_status.json'
 
@@ -116,11 +115,3 @@ class AIStatusTracker:
         except Exception as e:
             self.logger.debug(f"状态文件写入失败: {e}")
 
-    def set_idle(self):
-        self.set_status('idle', '', 0)
-
-    def set_working(self, task: str = '', progress: int = 0):
-        self.set_status('working', task, progress)
-
-    def set_alert(self, reason: str = ''):
-        self.set_status('alert', reason, 0)

@@ -11,7 +11,6 @@
  3. 扫描可疑进程
  4. 检查防火墙/杀毒状态
  5. 将状态推送到 ESP32 设备
- 6. 启动 Web Dashboard (可选)
 """
 
 import sys
@@ -32,15 +31,13 @@ from firewall_checker import FirewallChecker
 from device_bridge import DeviceBridge
 from ai_status import AIStatusTracker
 from character_manager import CharacterManager
-from llm_client import MultiLLMClient, LLMConfig, Provider, PRESET_MODELS
+from llm_client import MultiLLMClient, LLMConfig, Provider
+
+# agent/llm.py 集成
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from agent.config import AgentConfig
 
 # 可选模块
-try:
-    from web_dashboard import WebDashboard
-    HAS_DASHBOARD = True
-except ImportError:
-    HAS_DASHBOARD = False
-
 try:
     from system_tray import SystemTrayApp
     HAS_TRAY = True
@@ -153,10 +150,6 @@ class GuardianController:
         self._last_sec_level = 'safe'
         self._startup_phase = True
 
-        self.web = None
-        if HAS_DASHBOARD and self.config.get('dashboard', {}).get('enabled', False):
-            self.web = WebDashboard(self.config.get('dashboard', {}), self, self.logger)
-
         self.tray = None
         if HAS_TRAY and self.config.get('system_tray', {}).get('enabled', False):
             self.tray = SystemTrayApp(self, self.logger)
@@ -169,31 +162,49 @@ class GuardianController:
             return yaml.safe_load(f)
 
     def _init_llm_client(self) -> MultiLLMClient:
-        """初始化多模型 LLM 客户端"""
+        """初始化多模型 LLM 客户端 (使用 agent/llm.py 的 LLMRouter)"""
         llm_cfg = self.config.get('llm', {})
         if not llm_cfg.get('enabled', True):
             self.logger.info("LLM 功能已禁用")
             return MultiLLMClient([], self.logger)
 
+        # 使用 AgentConfig 解析配置 (支持 ${ENV_VAR} 解析)
+        config_path = Path(__file__).parent / 'config.yaml'
+        try:
+            agent_cfg = AgentConfig.from_config_file(str(config_path))
+        except Exception as e:
+            self.logger.warning(f"AgentConfig 解析失败: {e}，回退到手动模式")
+            agent_cfg = None
+
         client = MultiLLMClient([], self.logger)
-        default_model = llm_cfg.get('default_model', 'glm-4-flash')
 
-        # DeepSeek
-        ds_cfg = llm_cfg.get('deepseek', {})
-        if ds_cfg.get('enabled') and ds_cfg.get('api_key', '').startswith('sk-'):
-            client.add_from_preset(ds_cfg.get('model', 'deepseek-chat'), ds_cfg['api_key'])
+        if agent_cfg and agent_cfg.providers:
+            # 从 AgentConfig 直接注入已配置的 providers
+            from llm_client import LLMConfig as LLCfg
+            for p in agent_cfg.providers:
+                client.add_provider(LLCfg(
+                    provider=Provider.CUSTOM,
+                    api_key=p.api_key,
+                    model=p.model,
+                    base_url=p.base_url,
+                    max_tokens=p.max_tokens,
+                    temperature=p.temperature,
+                    timeout=p.timeout,
+                ))
+        else:
+            # 回退: 手动从 config 构建
+            ds_cfg = llm_cfg.get('deepseek', {})
+            if ds_cfg.get('enabled') and ds_cfg.get('api_key', '').startswith('sk-'):
+                client.add_from_preset(ds_cfg.get('model', 'deepseek-chat'), ds_cfg['api_key'])
 
-        # 智谱
-        zp_cfg = llm_cfg.get('zhipu', {})
-        if zp_cfg.get('enabled') and zp_cfg.get('api_key', ''):
-            client.add_from_preset(zp_cfg.get('model', 'glm-4-flash'), zp_cfg['api_key'])
+            zp_cfg = llm_cfg.get('zhipu', {})
+            if zp_cfg.get('enabled') and zp_cfg.get('api_key', ''):
+                client.add_from_preset(zp_cfg.get('model', 'glm-4-flash'), zp_cfg['api_key'])
 
-        # 硅基流动
-        sf_cfg = llm_cfg.get('siliconflow', {})
-        if sf_cfg.get('enabled') and sf_cfg.get('api_key', '').startswith('sk-'):
-            client.add_from_preset(sf_cfg.get('model', 'silicon-deepseek-v3'), sf_cfg['api_key'])
+            sf_cfg = llm_cfg.get('siliconflow', {})
+            if sf_cfg.get('enabled') and sf_cfg.get('api_key', '').startswith('sk-'):
+                client.add_from_preset(sf_cfg.get('model', 'silicon-deepseek-v3'), sf_cfg['api_key'])
 
-        # 如果没有配置任何 key，使用免费预设提示
         if client.available_count == 0:
             self.logger.warning("⚠️  未配置任何 LLM API Key")
             self.logger.warning("💡 推荐免费方案:")
@@ -224,7 +235,7 @@ class GuardianController:
 
         # 连接设备
         if not self.device.connect():
-            self.logger.warning("⚠️  设备未连接，将仅使用 Web Dashboard")
+            self.logger.warning("⚠️  设备未连接，将使用桌面 GUI 监控")
 
         # 启动安全扫描线程
         self._start_thread(self._scan_loop, "SecurityScanner")
@@ -232,10 +243,6 @@ class GuardianController:
         # 启动 AI 状态追踪
         if self.config.get('ai', {}).get('enabled', True):
             self._start_thread(self._ai_status_loop, "AIStatusTracker")
-
-        # 启动 Web Dashboard
-        if self.web:
-            self._start_thread(self.web.run, "WebDashboard")
 
         # 启动系统托盘 (仅在非 GUI 模式)
         if self.tray:
@@ -253,8 +260,6 @@ class GuardianController:
         self.logger.info("正在关闭所有模块...")
 
         self.device.disconnect()
-        if self.web:
-            self.web.stop()
         if self.tray:
             self.tray.stop()
 
@@ -452,7 +457,7 @@ class GuardianController:
             state_copy = self.state.copy()
         self.device.send_update(state_copy)
 
-    # 提供给 Web Dashboard 的接口
+    # 提供给 GUI 的接口
     def get_state(self) -> dict:
         with self.state_lock:
             return self.state.copy()
@@ -500,13 +505,12 @@ def main():
   python main.py                    # 默认启动
   python main.py --config my.yaml   # 使用自定义配置
   python main.py --no-tray          # 不启动系统托盘
-  python main.py --no-device        # 不连接 ESP32 (仅 Web)
+  python main.py --no-device        # 不连接 ESP32
         """
     )
     parser.add_argument('--config', '-c', help='配置文件路径', default=None)
     parser.add_argument('--no-tray', action='store_true', help='禁用系统托盘')
     parser.add_argument('--no-device', action='store_true', help='禁用设备连接')
-    parser.add_argument('--no-dashboard', action='store_true', help='禁用 Web Dashboard')
     parser.add_argument('--gui', action='store_true', help='启动桌面 GUI (PyQt5)')
     args = parser.parse_args()
 
@@ -516,20 +520,16 @@ def main():
         controller.config['system_tray']['enabled'] = False
     if args.no_device:
         controller.config['device']['mode'] = 'none'
-    if args.no_dashboard:
-        controller.config['dashboard']['enabled'] = False
 
     # 管理员权限检查
     check_admin_privileges(controller.logger)
 
-    # GUI 模式 — 统一单体应用，关闭 Web Dashboard 和 pystray
+    # GUI 模式 — 统一单体应用，关闭 pystray
     if args.gui:
         if not HAS_GUI:
             print("❌ PyQt5 未安装。请运行: pip install PyQt5")
             sys.exit(1)
-        controller.config['dashboard']['enabled'] = False
         controller.config['system_tray']['enabled'] = False
-        controller.web = None
         controller.tray = None
         controller.start_monitors()
         exit_code = run_gui(controller, controller.logger)

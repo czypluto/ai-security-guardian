@@ -5,14 +5,14 @@
 ============================================================
 
 功能:
-  - 自由对话: 与 AI 安全管家"安小盾"交流
-  - 快速操作: 一键扫描病毒/检查漏洞/安全分析
-  - 实时扫描: 调用安全模块获取实时数据
+  - ReAct 智能对话: Think -> Act -> Observe -> Respond
+  - 工具调用: 一键调用安全扫描/威胁检测/漏洞检查
   - 流式输出: LLM 回复逐字显示
   - 对话历史: 保持上下文连贯性
 """
 
 import sys
+import json
 import logging
 import time
 from datetime import datetime
@@ -23,30 +23,42 @@ try:
     from PyQt5.QtWidgets import (
         QApplication, QDialog, QWidget, QFrame, QLabel,
         QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit,
-        QScrollArea, QSizePolicy, QSplitter, QSpacerItem,
-        QMessageBox,
+        QScrollArea, QMessageBox,
     )
-    from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QPropertyAnimation
+    from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
     from PyQt5.QtGui import (
-        QFont, QColor, QIcon, QPixmap, QPainter, QPen, QBrush,
-        QTextCursor, QPalette, QFontMetrics,
+        QFont, QColor,
     )
     HAS_PYQT5 = True
 except ImportError:
     HAS_PYQT5 = False
-    # Stub base classes to prevent NameError when module is imported without PyQt5
     QApplication = QDialog = QWidget = QFrame = QLabel = object
     QVBoxLayout = QHBoxLayout = QPushButton = QTextEdit = object
-    QScrollArea = QSizePolicy = QSplitter = QSpacerItem = object
+    QScrollArea = QMessageBox = object
     QThread = pyqtSignal = object
-    QTimer = QPropertyAnimation = object
-    QFont = QColor = QIcon = QPixmap = QPainter = QPen = QBrush = object
-    QTextCursor = QPalette = QFontMetrics = object
+    QTimer = object
+    QFont = QColor = object
     Qt = type('Qt', (), {})()
 
-# Knowledge base integration
+# Agent module integration (tools + llm)
+_AGENT_ROOT = str(Path(__file__).parent.parent)
+if _AGENT_ROOT not in sys.path:
+    sys.path.insert(0, _AGENT_ROOT)
+
 try:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from agent.tools import create_tool_registry
+    HAS_AGENT = True
+except ImportError:
+    HAS_AGENT = False
+
+try:
+    from agent.llm import LLMRouter
+    from agent.config import LLMProvider
+    HAS_ROUTER = True
+except ImportError:
+    HAS_ROUTER = False
+
+try:
     from agent.knowledge_base import get_knowledge_base
     HAS_KB = True
 except ImportError:
@@ -79,100 +91,189 @@ COLORS = {
 
 
 # ============================================================
-# AI 安全管家系统提示词
+# AI 安全管家系统提示词 (ReAct + Tools)
 # ============================================================
-SECURITY_AGENT_PROMPT = """你是一个名叫"安小盾"的 AI 网络安全管家。你运行在用户的 Windows PC 上，作为安全守护程序的一部分。
+SECURITY_AGENT_PROMPT = """你是"安小盾"，一个 AI 网络安全管家，运行在用户的 Windows PC 上。
 
-## 你的身份
-- 名字: 安小盾
-- 性格: 认真负责、专业可靠、又有点可爱的二次元风格安全专家
-- 特长: 网络安全分析、病毒检测、漏洞扫描、系统安全加固
+## 身份与性格
+- 专业可靠的安全专家，带一点可爱的二次元风格
+- 用中文回复，保持专业但不失亲切，可偶尔使用颜文字
+- 回复简洁，一般不超过 150 字
 
-## 你的能力
-1. **病毒检测**: 分析可疑进程、检查 Windows Defender 状态、识别恶意软件行为
-2. **漏洞扫描**: 检查开放端口、防火墙配置、系统更新状态
-3. **网络监控**: 分析网络连接、检测可疑 IP、识别 C2 通信
-4. **安全建议**: 提供具体可操作的修复方案
+## 核心能力 — 你可以直接调用工具
+你拥有实时系统安全工具，**务必主动使用它们来回答问题**：
+- **scan_network** — 扫描活跃网络连接，检测可疑 IP 和恶意端口（C2、后门）
+- **scan_processes** — 扫描运行中的进程，识别可疑/恶意软件
+- **check_firewall** — 检查 Windows 防火墙和 Defender 状态
+- **read_security_logs** — 读取 Windows 安全事件日志
+- **security_summary** — 获取综合安全摘要和风险等级
+- **get_system_state** — 获取 CPU/内存/磁盘使用率
+- **get_listening_ports** — 列出所有开放监听端口
+- **run_command** — 执行安全诊断命令（ipconfig, netstat, tasklist 等）
+- **threat_check_ip** — 通过 AlienVault OTX 检查 IP 信誉
+- **cve_search** — 搜索 CVE 漏洞信息
 
-## 回复规则
-- 使用中文回复
-- 保持专业但不失亲切，可以偶尔使用颜文字
-- 如果用户报告安全问题，先安抚情绪再给出专业建议
-- 对于不确定的内容，建议用户进行更深入的检查
-- 回复长度适中，不要过长（一般不超过150字）
-- 涉及具体操作步骤时，给出清晰明确指令
-- 如果检测到严重威胁，语气要严肃但不要制造恐慌
-
-## 当前上下文
-你是桌面安全软件的一部分，可以直接访问系统的安全监控数据。
-用户通过聊天窗口与你交流。你可以帮助用户理解安全威胁并解决问题。"""
+## 工具使用规则
+1. **用户问安全状态 → 先调用 scan_network + check_firewall + security_summary**
+2. **用户问可疑进程 → 调用 scan_processes**
+3. **用户问端口/防火墙 → 调用 check_firewall + get_listening_ports**
+4. **不要猜测，用工具获取真实数据后回答**
+5. 工具结果可能较长，你只需提取关键信息回复用户
+6. 如果检测到威胁，说明严重等级和建议的应对措施"""
 
 
 # ============================================================
-# LLM 后台工作线程
+# LLM ReAct 后台工作线程 — Think -> Act -> Observe -> Respond
 # ============================================================
 class LLMWorker(QThread):
-    """后台线程执行 LLM 调用，避免阻塞 UI。30秒超时自动终止。"""
-    finished = pyqtSignal(str, bool)  # (response_text, success)
-    streaming = pyqtSignal(str)       # 流式增量文本
+    """ReAct 循环: LLM 可以调用安全工具来回答用户问题。
+    每个工具调用和结果都实时显示在聊天界面。"""
+    finished = pyqtSignal(str, bool)       # (final_text, success)
+    streaming = pyqtSignal(str)            # 流式文本增量
+    tool_call_signal = pyqtSignal(str, str) # (tool_name, args_summary)
+    tool_result_signal = pyqtSignal(str, str) # (tool_name, result_summary)
 
-    def __init__(self, llm_client, messages: list, parent=None):
+    MAX_TOOL_ITERATIONS = 5
+    TIMEOUT_SECONDS = 60
+
+    def __init__(self, router, messages: list, tool_schemas: list,
+                 tool_registry, parent=None):
         super().__init__(parent)
-        self.llm = llm_client
-        self.messages = messages
+        self.router = router          # LLMRouter 实例
+        self.messages = list(messages) # 完整消息历史 (会被修改)
+        self.tool_schemas = tool_schemas
+        self.tool_registry = tool_registry  # ToolRegistry 实例
         self._start_time = 0
 
     def run(self):
-        import time
         self._start_time = time.time()
 
-        if self.llm is None or self.llm.available_count == 0:
+        if self.router is None:
             self.finished.emit(
-                "未配置 AI 模型。请先在 config.yaml 中配置 LLM API Key。\n\n"
-                "推荐免费方案:\n"
-                "  智谱 glm-4-flash (免费): https://open.bigmodel.cn\n"
-                "  硅基流动 (新用户免费): https://cloud.siliconflow.cn",
+                "LLM Router 未初始化。\n"
+                "请检查 config.yaml 中的 llm 配置。",
                 False)
             return
 
-        full_text = ""
+        if self.router.available_count == 0:
+            self.finished.emit(
+                "未配置 AI 模型。请在 config.yaml 中配置 DeepSeek API Key。\n\n"
+                "获取 Key: https://platform.deepseek.com\n"
+                "配置后在 config.yaml 的 llm.deepseek 填入 api_key",
+                False)
+            return
+
         try:
-            for chunk in self.llm.chat_stream(
+            self._react_loop()
+        except Exception as e:
+            import traceback
+            self.finished.emit(f"AI 异常: {e}\n{traceback.format_exc()}", False)
+
+    def _react_loop(self):
+        """ReAct 主循环: Think → Act → Observe → Repeat"""
+        full_text = ""
+        iteration = 0
+
+        while iteration < self.MAX_TOOL_ITERATIONS:
+            iteration += 1
+
+            if time.time() - self._start_time > self.TIMEOUT_SECONDS:
+                if full_text.strip():
+                    break
+                self.finished.emit("AI 响应超时，请稍后重试。", False)
+                return
+
+            # 调用 LLM (流式, 带 tool schemas)
+            text_chunks = []
+            tool_calls_received = []
+
+            for event in self.router.chat_stream(
                 messages=self.messages,
-                system_prompt=SECURITY_AGENT_PROMPT,
-                max_tokens=512,
+                tools=self.tool_schemas if self.tool_schemas else None,
+                max_tokens=1024,
             ):
-                # 15秒无数据则超时
-                if time.time() - self._start_time > 30:
-                    if full_text.strip():
-                        break
-                    else:
-                        self.finished.emit("AI 响应超时，请稍后重试。", False)
-                        return
+                if time.time() - self._start_time > self.TIMEOUT_SECONDS:
+                    break
 
-                if chunk and not chunk.startswith('['):
-                    full_text += chunk
-                    self.streaming.emit(chunk)
+                etype = event.get("type", "")
 
+                if etype == "text":
+                    text_chunks.append(event["content"])
+                    self.streaming.emit(event["content"])
+
+                elif etype == "tool_call":
+                    tool_calls_received.append(event["tool_call"])
+
+                elif etype == "error":
+                    # 静默跳过流式错误
+                    pass
+
+            if tool_calls_received:
+                # --- Act: 执行工具 ---
+                # 规范化 tool_calls 格式 (移除内部字段 arguments_parsed, 添加 type)
+                clean_tool_calls = []
+                for tc in tool_calls_received:
+                    func = tc.get("function", {})
+                    clean_tc = {
+                        "id": tc.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": func.get("name", ""),
+                            "arguments": func.get("arguments", "{}"),
+                        },
+                    }
+                    clean_tool_calls.append(clean_tc)
+
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": "".join(text_chunks) if text_chunks else "",
+                    "tool_calls": clean_tool_calls,
+                }
+                self.messages.append(assistant_msg)
+
+                # 执行每个工具
+                for tc in tool_calls_received:
+                    func = tc.get("function", {})
+                    name = func.get("name", "unknown")
+                    try:
+                        args = func.get("arguments_parsed", {})
+                    except Exception:
+                        args = {}
+
+                    args_summary = json.dumps(args, ensure_ascii=False)[:120]
+                    self.tool_call_signal.emit(name, args_summary)
+
+                    # 执行工具
+                    result_str = self.tool_registry.execute(name, args)
+                    try:
+                        result_obj = json.loads(result_str)
+                        result_brief = json.dumps(result_obj, ensure_ascii=False)[:300]
+                    except Exception:
+                        result_brief = result_str[:300]
+
+                    self.tool_result_signal.emit(name, result_brief)
+
+                    # 添加 tool 结果消息
+                    self.messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", ""),
+                        "content": result_str,
+                    })
+
+                # 继续循环让 LLM 处理工具结果
+                continue
+
+            # --- Respond: 没有工具调用, 返回最终文本 ---
+            full_text = "".join(text_chunks)
             if full_text.strip():
                 self.finished.emit(full_text.strip(), True)
-            else:
-                # 流式无输出，尝试非流式
-                try:
-                    response = self.llm.chat(
-                        messages=self.messages,
-                        system_prompt=SECURITY_AGENT_PROMPT,
-                        max_tokens=512,
-                    )
-                    if response.success:
-                        self.finished.emit(response.text, True)
-                    else:
-                        self.finished.emit(
-                            f"AI 暂时无法响应: {response.error}\n请检查网络和 API 配置。", False)
-                except Exception as e:
-                    self.finished.emit(f"AI 调用失败: {str(e)}", False)
-        except Exception as e:
-            self.finished.emit(f"AI 调用异常: {str(e)}", False)
+                return
+
+        # 达到最大迭代次数
+        if full_text.strip():
+            self.finished.emit(full_text.strip(), True)
+        else:
+            self.finished.emit("[已达到最大工具调用次数，请重新提问]", False)
 
 
 # ============================================================
@@ -460,21 +561,25 @@ class ChatWindow(QDialog):
         self.controller = controller
         self.logger = logger or logging.getLogger(__name__)
         self._conversation: List[Dict[str, str]] = []
-        self._full_history: List[Dict[str, str]] = []  # Complete history for KB save
+        self._full_history: List[Dict[str, str]] = []
         self._streaming_bubble: Optional[ChatBubble] = None
         self._streaming_text = ""
         self._worker: Optional[LLMWorker] = None
         self._is_processing = False
         self._message_widgets: list = []
 
-        # Knowledge base (延迟加载，避免阻塞 UI)
+        # Agent 工具注册表 (延迟初始化)
+        self._tool_registry = None
+        self._tool_schemas = None
+
+        # Knowledge base (延迟加载)
         self._kb = None
         self._kb_loaded = False
 
         self._build_ui()
         self._add_welcome_message()
 
-        # 看门狗：30秒强制重置 _is_processing，防止卡死
+        # 看门狗
         self._watchdog = QTimer(self)
         self._watchdog.timeout.connect(self._watchdog_check)
         self._watchdog.start(5000)
@@ -622,25 +727,25 @@ class ChatWindow(QDialog):
 
         if llm_available:
             welcome = (
-                "你好，我是安小盾，你的 AI 网络安全管家\n\n"
-                "我可以帮你:\n"
-                "  快速扫描 - 检查系统安全状态\n"
-                "  病毒检测 - 扫描可疑进程和恶意软件\n"
-                "  漏洞检查 - 检查端口开放和防火墙配置\n"
-                "  安全报告 - 生成完整的安全分析报告\n"
-                "  修复建议 - 提供安全加固方案\n\n"
-                "直接跟我说话，或者点击上方按钮开始吧"
+                "你好，我是安小盾，你的 AI 网络安全管家 🛡️\n\n"
+                "我可以直接调用系统安全工具:\n"
+                "  🔍 扫描进程 — 检测恶意软件\n"
+                "  🌐 分析网络 — 发现可疑连接\n"
+                "  🔒 检查防火墙 — 验证防护状态\n"
+                "  📊 系统诊断 — CPU/内存/端口\n"
+                "  🕵️ 威胁情报 — IP/域名信誉查询\n\n"
+                "直接跟我说话，我会主动使用工具帮你分析！"
             )
         else:
             welcome = (
                 "你好，我是安小盾，你的 AI 网络安全管家\n\n"
-                "AI 模型未配置，对话功能暂时不可用。\n"
-                "快速操作（扫描/检测等）仍然可用。\n\n"
-                "配置 AI 模型以获得智能对话体验:\n"
-                "  1. 编辑 config.yaml\n"
-                "  2. 填入 LLM API Key（推荐智谱免费模型）\n"
-                "  3. 重启程序\n\n"
-                "点击上方按钮执行安全操作"
+                "⚠️ AI 模型未配置，智能对话不可用。\n"
+                "快速操作按钮仍可使用本地安全扫描。\n\n"
+                "配置 DeepSeek 以获得 AI 智能分析:\n"
+                "  1. 访问 https://platform.deepseek.com\n"
+                "  2. 获取 API Key\n"
+                "  3. 在 config.yaml 填入 api_key\n"
+                "  4. 重启程序"
             )
 
         self._add_message(welcome, 'ai')
@@ -740,38 +845,73 @@ class ChatWindow(QDialog):
         except Exception as e:
             self.logger.debug(f"知识库初始化跳过: {e}")
 
-    # ---- AI 调用 ----
-    def _call_ai(self, user_message: str):
+    # ---- Agent Tools 延迟初始化 ----
+    def _ensure_tools(self):
+        """延迟加载 agent ToolRegistry 和 tool schemas"""
+        if self._tool_registry is not None:
+            return
+        if not HAS_AGENT:
+            self.logger.debug("agent/tools.py 不可用")
+            self._tool_registry = False  # 标记已尝试
+            return
+        try:
+            self._tool_registry = create_tool_registry()
+            self._tool_schemas = self._tool_registry.get_schemas()
+            self.logger.info(
+                f"Agent 工具已加载: {len(self._tool_schemas)} 个工具可用")
+        except Exception as e:
+            self.logger.debug(f"工具注册表初始化失败: {e}")
+            self._tool_registry = False
+
+    def _get_router(self):
+        """从 controller.llm 获取底层 LLMRouter"""
         try:
             llm = self.controller.llm
+            if llm is None:
+                return None
+            # MultiLLMClient 适配器内部持有 LLMRouter
+            if hasattr(llm, '_router') and llm._router is not None:
+                return llm._router
         except Exception:
-            llm = None
+            pass
+        return None
 
-        self._streaming_bubble = self._add_message('思考中...', 'ai')
-        self._streaming_text = ""
+    # ---- AI 调用 (ReAct) ----
+    def _call_ai(self, user_message: str):
+        router = self._get_router()
 
-        recent_messages = self._conversation[-20:]
+        # 构建消息: system prompt + 对话历史 (不含占位符)
+        conversation_for_llm = list(self._conversation[-20:])
+        messages_for_llm = [
+            {"role": "system", "content": SECURITY_AGENT_PROMPT},
+        ]
 
-        # Search knowledge base for relevant context (延迟加载)
+        # Knowledge base context
         self._ensure_kb()
-        kb_context = ""
         if self._kb:
             try:
                 kb_context = self._kb.build_context(user_message, top_k=3)
                 if kb_context:
-                    self.logger.debug(f"KB: 检索到相关知识 ({len(kb_context)} 字符)")
-            except Exception as e:
-                self.logger.debug(f"KB 检索跳过: {e}")
+                    messages_for_llm.append({"role": "system", "content": kb_context})
+            except Exception:
+                pass
 
-        # Inject KB context as a system message before the recent messages
-        if kb_context:
-            kb_msg = {"role": "system", "content": kb_context}
-            messages_for_llm = [kb_msg] + list(recent_messages)
-        else:
-            messages_for_llm = list(recent_messages)
+        messages_for_llm.extend(conversation_for_llm)
 
-        self._worker = LLMWorker(llm, messages_for_llm, self)
+        # 加载工具
+        self._ensure_tools()
+        tool_schemas = self._tool_schemas if isinstance(self._tool_registry, object) and self._tool_registry else None
+        tool_registry = self._tool_registry if self._tool_registry else None
+
+        # UI 占位气泡 (不加入对话历史)
+        self._streaming_bubble = self._add_message('思考中...', 'ai')
+        self._streaming_text = ""
+
+        self._worker = LLMWorker(
+            router, messages_for_llm, tool_schemas, tool_registry, self)
         self._worker.streaming.connect(self._on_stream_chunk)
+        self._worker.tool_call_signal.connect(self._on_tool_call)
+        self._worker.tool_result_signal.connect(self._on_tool_result)
         self._worker.finished.connect(self._on_ai_response)
         self._worker.start()
 
@@ -781,17 +921,37 @@ class ChatWindow(QDialog):
             self._update_bubble_text(self._streaming_bubble, self._streaming_text)
             self._scroll_to_bottom()
 
+    def _on_tool_call(self, tool_name: str, args_summary: str):
+        """显示工具调用"""
+        icon = {'scan_network': '🌐', 'scan_processes': '🔍', 'check_firewall': '🔒',
+                'get_system_state': '📊', 'security_summary': '🛡️',
+                'read_security_logs': '📋', 'get_listening_ports': '🔌',
+                'run_command': '⚡', 'threat_check_ip': '🕵️',
+                'threat_check_domain': '🌍', 'cve_search': '📚', 'cve_lookup': '🔎',
+                'web_search': '🔍', 'defender_status': '🛡️'}.get(tool_name, '🔧')
+        self._add_message(f'{icon} 调用工具: {tool_name}', 'system')
+
+    def _on_tool_result(self, tool_name: str, result_summary: str):
+        """显示工具结果摘要 (截断)"""
+        brief = result_summary[:200] + ('...' if len(result_summary) > 200 else '')
+        self._add_message(f'✅ {tool_name}: {brief}', 'system')
+
     def _update_bubble_text(self, bubble: ChatBubble, new_text: str):
         if hasattr(bubble, '_text_label'):
             bubble._text_label.setText(new_text)
             bubble._text = new_text
 
     def _on_ai_response(self, response_text: str, success: bool):
+        # 更新占位气泡
         if self._streaming_bubble:
             self._update_bubble_text(self._streaming_bubble, response_text)
 
-            if self._conversation and self._conversation[-1].get('content') == '思考中...':
-                self._conversation[-1] = {"role": "assistant", "content": response_text}
+        # 添加到对话历史 (仅成功且非空的回复)
+        if success and response_text.strip():
+            self._conversation.append(
+                {"role": "assistant", "content": response_text})
+            self._full_history.append(
+                {"role": "assistant", "content": response_text})
 
         self._streaming_bubble = None
         self._streaming_text = ""
@@ -998,64 +1158,54 @@ class ChatWindow(QDialog):
         self._input_bar.set_enabled(True)
 
     def _do_security_report(self):
-        """AI 生成安全分析报告"""
-        self._add_message('正在生成安全分析报告...', 'system')
+        """AI 生成安全分析报告 (使用工具获取实时数据)"""
+        router = self._get_router()
+        self._ensure_tools()
+        tool_schemas = self._tool_schemas if isinstance(self._tool_registry, object) and self._tool_registry else None
+        tool_registry = self._tool_registry if self._tool_registry else None
 
-        try:
-            state = self.controller.get_state()
-            llm = self.controller.llm
+        state = self.controller.get_state()
+        sec_level = state.get('sec_level', 'safe')
+        threats = state.get('threat_count', 0)
+        cpu = state.get('cpu_usage', 0)
+        mem = state.get('mem_usage', 0)
+        fw = state.get('firewall_on', True)
+        av = state.get('defender_on', True)
 
-            sec_level = state.get('sec_level', 'safe')
-            threats = state.get('threat_count', 0)
-            cpu = state.get('cpu_usage', 0)
-            mem = state.get('mem_usage', 0)
-            fw = state.get('firewall_on', True)
-            av = state.get('defender_on', True)
+        summary = (
+            f'安全状态: {sec_level.upper()} | '
+            f'威胁: {threats} | CPU: {cpu:.1f}% | 内存: {mem:.1f}%\n'
+            f'防火墙: {"开启" if fw else "关闭"} | '
+            f'Defender: {"开启" if av else "关闭"}'
+        )
+        self._add_message(summary, 'system')
 
-            summary = (
-                f'安全状态: {sec_level.upper()} | '
-                f'威胁: {threats} | CPU: {cpu:.1f}% | 内存: {mem:.1f}%\n'
-                f'防火墙: {"开启" if fw else "关闭"} | '
-                f'Defender: {"开启" if av else "关闭"}'
+        if router and router.available_count > 0:
+            prompt = (
+                f"请调用安全工具获取实时数据，然后生成一份简洁的安全分析报告（100字以内）:\n"
+                f"先调用 scan_network + check_firewall + get_system_state，"
+                f"然后根据结果给出: 1)总体评价 2)主要风险 3)优先处理事项"
             )
-            self._add_message(summary, 'system')
+            messages = [
+                {"role": "system", "content": SECURITY_AGENT_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
 
-            if llm and llm.available_count > 0:
-                analysis_prompt = (
-                    f"请根据以下系统安全状态，生成一份简洁的安全分析报告（100字以内）:\n\n"
-                    f"安全等级: {sec_level}\n"
-                    f"活跃威胁数: {threats}\n"
-                    f"可疑IP: {state.get('suspicious_ips', 0)}\n"
-                    f"活跃连接: {state.get('active_connections', 0)}\n"
-                    f"防火墙: {'开启' if fw else '关闭'}\n"
-                    f"杀毒: {'开启' if av else '关闭'}\n"
-                    f"CPU: {cpu:.1f}% / 内存: {mem:.1f}%\n"
-                    f"最近事件: {state.get('messages', [])}\n\n"
-                    f"请给出: 1)总体评价 2)主要风险 3)优先处理事项"
-                )
+            self._is_processing = True
+            self._input_bar.set_enabled(False)
+            analysis_bubble = self._add_message('AI 分析中...', 'ai')
 
-                self._is_processing = True
-                self._input_bar.set_enabled(False)
-
-                analysis_bubble = self._add_message('AI 分析中...', 'ai')
-
-                self._analysis_worker = LLMWorker(llm, [
-                    {"role": "user", "content": analysis_prompt}
-                ], self)
-                self._analysis_worker.streaming.connect(
-                    lambda chunk: self._on_report_chunk(chunk, analysis_bubble))
-                self._analysis_worker.finished.connect(
-                    lambda text, ok: self._on_report_done(text, ok, analysis_bubble))
-                self._analysis_worker.start()
-            else:
-                self._add_message(
-                    '配置 AI 模型后可获得智能安全分析报告。\n'
-                    '当前显示的是系统实时数据摘要。', 'system')
-        except Exception as e:
-            self._add_message(f'报告生成失败: {e}', 'system')
-
-    def _on_report_chunk(self, chunk: str, bubble: ChatBubble):
-        self._update_bubble_text(bubble, bubble._text.replace('AI 分析中...', '') + chunk)
+            worker = LLMWorker(router, messages, tool_schemas, tool_registry, self)
+            worker.streaming.connect(
+                lambda chunk: self._update_bubble_text(
+                    analysis_bubble,
+                    analysis_bubble._text.replace('AI 分析中...', '') + chunk))
+            worker.finished.connect(
+                lambda text, ok: self._on_report_done(text, ok, analysis_bubble))
+            worker.start()
+        else:
+            self._add_message(
+                '配置 AI 模型后可获得智能安全分析报告。', 'system')
 
     def _on_report_done(self, text: str, success: bool, bubble: ChatBubble):
         if success:
@@ -1066,82 +1216,68 @@ class ChatWindow(QDialog):
         self._input_bar.set_enabled(True)
 
     def _do_fix_advice(self):
-        """获取安全修复建议"""
-        self._add_message('正在分析修复方案...', 'system')
+        """获取安全修复建议 (使用工具分析)"""
+        router = self._get_router()
+        self._ensure_tools()
+        tool_schemas = self._tool_schemas if isinstance(self._tool_registry, object) and self._tool_registry else None
+        tool_registry = self._tool_registry if self._tool_registry else None
 
-        try:
-            state = self.controller.get_state()
-            llm = self.controller.llm
+        state = self.controller.get_state()
+        issues = []
+        if not state.get('firewall_on', True):
+            issues.append('防火墙已关闭')
+        if not state.get('defender_on', True):
+            issues.append('Windows Defender 未运行')
+        if state.get('threat_count', 0) > 0:
+            issues.append(f"发现 {state.get('threat_count')} 个活跃威胁")
+        if state.get('suspicious_ips', 0) > 0:
+            issues.append(f"发现 {state.get('suspicious_ips')} 个可疑 IP 连接")
+        if state.get('cpu_usage', 0) > 80:
+            issues.append(f"CPU 使用率过高 ({state.get('cpu_usage', 0):.0f}%)")
 
-            issues = []
+        if not issues:
+            self._add_message(
+                '当前系统状态良好，未发现需要修复的问题。\n\n'
+                '日常安全建议:\n'
+                '  保持 Windows 和软件更新\n'
+                '  定期运行 Windows Defender 全盘扫描\n'
+                '  谨慎下载和运行未知来源的程序\n'
+                '  定期备份重要数据',
+                'system')
+            return
+
+        issues_text = '\n'.join(f'  - {i}' for i in issues)
+        self._add_message(f'发现以下问题:\n{issues_text}', 'system')
+
+        if router and router.available_count > 0:
+            prompt = (
+                f"用户的系统存在以下安全问题:\n{issues_text}\n\n"
+                f"先调用相关工具确认问题严重性，然后给出具体可操作的修复建议。"
+            )
+            messages = [
+                {"role": "system", "content": SECURITY_AGENT_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
+
+            self._is_processing = True
+            self._input_bar.set_enabled(False)
+            fix_bubble = self._add_message('生成修复方案中...', 'ai')
+
+            worker = LLMWorker(router, messages, tool_schemas, tool_registry, self)
+            worker.streaming.connect(
+                lambda chunk: self._update_bubble_text(
+                    fix_bubble,
+                    fix_bubble._text.replace('生成修复方案中...', '') + chunk))
+            worker.finished.connect(
+                lambda text, ok: self._on_report_done(text, ok, fix_bubble))
+            worker.start()
+        else:
+            fix_lines = ['修复建议:']
             if not state.get('firewall_on', True):
-                issues.append('防火墙已关闭')
+                fix_lines.append('\n开启防火墙: 设置 -> 安全中心 -> 防火墙')
             if not state.get('defender_on', True):
-                issues.append('Windows Defender 未运行')
-            if state.get('threat_count', 0) > 0:
-                issues.append(f"发现 {state.get('threat_count')} 个活跃威胁")
-            if state.get('suspicious_ips', 0) > 0:
-                issues.append(f"发现 {state.get('suspicious_ips')} 个可疑 IP 连接")
-            if state.get('cpu_usage', 0) > 80:
-                issues.append(f"CPU 使用率过高 ({state.get('cpu_usage', 0):.0f}%)")
-            if state.get('mem_usage', 0) > 80:
-                issues.append(f"内存使用率过高 ({state.get('mem_usage', 0):.0f}%)")
-
-            if not issues:
-                self._add_message(
-                    '当前系统状态良好，未发现需要修复的问题。\n\n'
-                    '日常安全建议:\n'
-                    '  保持 Windows 和软件更新\n'
-                    '  定期运行 Windows Defender 全盘扫描\n'
-                    '  谨慎下载和运行未知来源的程序\n'
-                    '  定期备份重要数据\n'
-                    '  使用强密码并开启双因素认证',
-                    'system')
-                return
-
-            issues_text = '\n'.join(f'  - {i}' for i in issues)
-            self._add_message(f'发现以下问题:\n{issues_text}', 'system')
-
-            if llm and llm.available_count > 0:
-                fix_prompt = (
-                    f"用户的系统存在以下安全问题:\n{issues_text}\n\n"
-                    f"请给出具体的、可操作的修复建议（100字以内）。"
-                    f"按优先级排序，说明每一步该怎么做。"
-                )
-
-                self._is_processing = True
-                self._input_bar.set_enabled(False)
-                fix_bubble = self._add_message('生成修复方案中...', 'ai')
-
-                self._fix_worker = LLMWorker(llm, [
-                    {"role": "user", "content": fix_prompt}
-                ], self)
-                self._fix_worker.streaming.connect(
-                    lambda chunk: self._on_report_chunk(chunk, fix_bubble))
-                self._fix_worker.finished.connect(
-                    lambda text, ok: self._on_report_done(text, ok, fix_bubble))
-                self._fix_worker.start()
-            else:
-                fix_lines = ['修复建议:']
-                if not state.get('firewall_on', True):
-                    fix_lines.append('\n开启防火墙:')
-                    fix_lines.append('  1. 打开 Windows 设置 → 隐私和安全性 → Windows 安全中心')
-                    fix_lines.append('  2. 点击"防火墙和网络保护"')
-                    fix_lines.append('  3. 为所有网络配置文件开启防火墙')
-                if not state.get('defender_on', True):
-                    fix_lines.append('\n开启 Defender:')
-                    fix_lines.append('  1. Windows 安全中心 → 病毒和威胁防护')
-                    fix_lines.append('  2. 开启实时保护和云提供保护')
-                if state.get('threat_count', 0) > 0:
-                    fix_lines.append('\n处理威胁:')
-                    fix_lines.append('  使用上方的"快速扫描"获取详细信息')
-                    fix_lines.append(f'  当前有 {state.get("threat_count")} 个威胁需要关注')
-                fix_lines.append('\n配置 AI 模型可获得个性化的修复指导。')
-
-                self._add_message('\n'.join(fix_lines), 'ai')
-
-        except Exception as e:
-            self._add_message(f'分析失败: {e}', 'system')
+                fix_lines.append('\n开启 Defender: 安全中心 -> 病毒防护')
+            self._add_message('\n'.join(fix_lines), 'ai')
 
     # ---- 看门狗 ----
     def _watchdog_check(self):
@@ -1164,21 +1300,6 @@ class ChatWindow(QDialog):
             self._worker.terminate()
             self._worker.wait(2000)
         super().closeEvent(event)
-
-
-# ============================================================
-# 入口函数
-# ============================================================
-def show_chat_window(controller, logger: logging.Logger = None, parent=None):
-    """显示 AI 对话窗口"""
-    if not HAS_PYQT5:
-        print("PyQt5 未安装。请运行: pip install PyQt5")
-        return None
-
-    chat = ChatWindow(controller, logger, parent)
-    chat.setAttribute(Qt.WA_DeleteOnClose)
-    chat.show()
-    return chat
 
 
 # ============================================================
@@ -1211,17 +1332,7 @@ if __name__ == '__main__':
 
     class MockLLM:
         available_count = 0
-        def chat_stream(self, messages, system_prompt, max_tokens):
-            yield "模拟 AI 回复..."
-        def chat(self, messages, system_prompt, max_tokens):
-            class Resp:
-                success = True
-                text = "这是模拟的 AI 回复。"
-            return Resp()
-        def analyze_security_event(self, state):
-            return "系统安全。"
-        def generate_companion_line(self, state):
-            return "一切正常~"
+        _router = None
 
     class MockProc:
         cpu_threshold = 80

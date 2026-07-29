@@ -1,0 +1,141 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="系统部署图" id="deploy">
+    <mxGraphModel dx="1000" dy="750" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="750" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 — 系统部署图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="250" y="5" width="500" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- PC Node -->
+        <mxCell id="pc_node" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="55" width="600" height="480" as="geometry" />
+        </mxCell>
+        <mxCell id="pc_label" value="《设备》 Windows PC" style="text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#1565c0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="55" width="200" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Python Runtime -->
+        <mxCell id="py_env" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;strokeWidth=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="90" width="560" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="py_label" value="《运行时》 Python 3.10+ Virtual Environment" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#f9a825;" vertex="1" parent="1">
+          <mxGeometry x="80" y="92" width="320" height="18" as="geometry" />
+        </mxCell>
+
+        <!-- Components -->
+        <mxCell id="c_gui" value="《组件》&#10;Desktop GUI&#10;(PyQt5)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c_web" value="《组件》&#10;Web Dashboard&#10;(Flask :5000)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="210" y="120" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c_cli" value="《组件》&#10;CLI Agent&#10;(agent_cli.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="340" y="120" width="110" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c_tray" value="《组件》&#10;System Tray&#10;(pystray)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="470" y="120" width="100" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c_ctrl" value="《组件》 GuardianController (主控制器)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="210" width="220" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="c_agent" value="《组件》 AI Agent (ReAct 引擎)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="270" width="220" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c_mon" value="《组件》&#10;Network | Process&#10;Firewall | Security&#10;Monitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="80" y="210" width="100" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="c_dev" value="《组件》&#10;DeviceBridge&#10;(Serial/WiFi)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="460" y="210" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="c_char" value="《组件》&#10;Character&#10;Manager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="460" y="280" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="c_kb" value="《组件》&#10;KnowledgeBase&#10;(ChromaDB)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f7fa;strokeColor=#00838f;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="80" y="350" width="110" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="c_sand" value="《组件》 Sandbox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="210" y="350" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="c_mcp" value="《组件》 MCP Client/Server" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="330" y="350" width="100" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="c_skills" value="《组件》 Skills" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="450" y="350" width="100" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Data stores on PC -->
+        <mxCell id="ds_config2" value="config.yaml" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=#757575;fontSize=9;size=8;" vertex="1" parent="1">
+          <mxGeometry x="80" y="440" width="80" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_log2" value="guardian.log" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=#757575;fontSize=9;size=8;" vertex="1" parent="1">
+          <mxGeometry x="180" y="440" width="80" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_chroma2" value="ChromaDB" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#b2ebf2;strokeColor=#00838f;fontSize=9;size=8;" vertex="1" parent="1">
+          <mxGeometry x="280" y="440" width="80" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_skills2" value="skills/*.md" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#6a1b9a;fontSize=9;size=8;" vertex="1" parent="1">
+          <mxGeometry x="380" y="440" width="80" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ESP32 Node -->
+        <mxCell id="esp_node" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#e91e63;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="680" y="55" width="290" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="esp_label" value="《设备》 ESP32 + OLED" style="text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#e91e63;" vertex="1" parent="1">
+          <mxGeometry x="700" y="55" width="200" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="esp_fw" value="《固件》 firmware.ino&#10;Arduino C++ v3.0" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#e91e63;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="720" y="90" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="esp_oled_c" value="《组件》 OLED 驱动&#10;(SSD1306)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#e91e63;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="720" y="145" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="esp_anim" value="《组件》 动画引擎&#10;(30fps)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8bbd0;strokeColor=#e91e63;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="720" y="200" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- External Services Node -->
+        <mxCell id="cloud_node" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="310" width="290" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud_label" value="《外部》 云服务" style="text;html=1;strokeColor=none;fillColor=none;fontSize=12;fontStyle=1;fontColor=#6a1b9a;" vertex="1" parent="1">
+          <mxGeometry x="700" y="310" width="150" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_ds" value="DeepSeek API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#6a1b9a;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="700" y="345" width="110" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_zp" value="智谱 GLM API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#6a1b9a;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="345" width="110" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_otx2" value="AlienVault OTX" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#6a1b9a;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="700" y="395" width="110" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_nvd2" value="NIST NVD" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#6a1b9a;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="395" width="110" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Communication links -->
+        <mxCell id="link1" value="USB Serial (115200bps)" style="endArrow=classic;html=1;strokeColor=#e91e63;strokeWidth=2;fontSize=9;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="165" as="sourcePoint" /><mxPoint x="720" y="165" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="link2" value="HTTPS" style="endArrow=classic;html=1;strokeColor=#6a1b9a;strokeWidth=1;fontSize=9;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="390" as="sourcePoint" /><mxPoint x="700" y="390" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <!-- Browser client -->
+        <mxCell id="browser" value="《客户端》&#10;浏览器&#10;(:5000)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="580" y="500" width="90" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="link3" value="HTTP" style="endArrow=classic;html=1;strokeColor=#4caf50;fontSize=9;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="570" y="527" as="sourcePoint" /><mxPoint x="640" y="527" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="link4" value="HTTP" style="endArrow=classic;html=1;strokeColor=#4caf50;fontSize=9;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="570" y="470" as="sourcePoint" /><mxPoint x="640" y="250" as="targetPoint" /></mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

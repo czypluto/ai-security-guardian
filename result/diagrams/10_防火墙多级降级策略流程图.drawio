@@ -1,0 +1,97 @@
+<mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="防火墙多级降级策略流程图" id="fallback">
+    <mxGraphModel dx="1000" dy="750" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="750" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 — FirewallChecker 多级降级策略流程图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=16;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="160" y="5" width="680" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Firewall -->
+        <mxCell id="fw_title" value="Windows 防火墙检查" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1565c0;strokeColor=#0d47a1;fontColor=#fff;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="55" width="440" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fw1" value="方法1: netsh advfirewall&#10;show allprofiles state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="110" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fw1_tag" value="⚡ 最快 (&lt;1s)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="290" y="120" width="70" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="fwa1" style="endArrow=classic;html=1;strokeColor=#333;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="180" y="160" as="sourcePoint" /><mxPoint x="180" y="190" as="targetPoint" /></mxGeometry></mxCell>
+
+        <mxCell id="fwd1" value="成功?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="145" y="190" width="70" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="fwdy" value="是" style="endArrow=classic;html=1;strokeColor=#4caf50;fontStyle=1;fontColor=#4caf50;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="215" y="212" as="sourcePoint" /><mxPoint x="320" y="212" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="fwresult" value="返回结果&#10;(缓存30秒)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="330" y="190" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fwdn" value="否→降级" style="endArrow=classic;html=1;strokeColor=#e53935;fontStyle=1;fontColor=#e53935;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="180" y="235" as="sourcePoint" /><mxPoint x="180" y="270" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <mxCell id="fw2" value="方法2: PowerShell&#10;Get-NetFirewallProfile" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="270" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fw2_tag" value="⏱ 较慢 (~2s)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#e65100;" vertex="1" parent="1">
+          <mxGeometry x="290" y="280" width="70" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="fwd2" value="成功?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="145" y="335" width="70" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="fwd2y" value="是" style="endArrow=classic;html=1;strokeColor=#4caf50;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="215" y="357" as="sourcePoint" /><mxPoint x="320" y="357" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="fwd2n" value="否→降级" style="endArrow=classic;html=1;strokeColor=#e53935;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="180" y="380" as="sourcePoint" /><mxPoint x="180" y="410" as="targetPoint" /></mxGeometry></mxCell>
+
+        <mxCell id="fw3" value="方法3: sc query mpssvc&#10;(防火墙服务状态)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#e53935;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="410" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="fw3_tag" value="🐢 兜底 (最后手段)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#c62828;" vertex="1" parent="1">
+          <mxGeometry x="290" y="420" width="100" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="fwd3" value="全部失败?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#e53935;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="140" y="475" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="fwd3y" value="连续失败>3次?" style="endArrow=classic;html=1;strokeColor=#e53935;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="180" y="520" as="sourcePoint" /><mxPoint x="180" y="545" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="fw_cache" value="使用缓存值兜底&#10;(默认: 开启)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=#757575;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="110" y="545" width="140" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Defender -->
+        <mxCell id="df_title" value="Windows Defender 检查" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2e7d32;strokeColor=#1b5e20;fontColor=#fff;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="55" width="440" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="df1" value="方法1: PowerShell&#10;Get-MpComputerStatus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#2e7d32;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="580" y="110" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="df1_tag" value="✅ 最可靠" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="790" y="120" width="60" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="dfd1" value="成功?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="645" y="175" width="70" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="dfd1y" value="是" style="endArrow=classic;html=1;strokeColor=#4caf50;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="715" y="197" as="sourcePoint" /><mxPoint x="820" y="197" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="dfres" value="返回详细&#10;Defender状态" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#4caf50;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="830" y="175" width="110" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="dfd1n" value="否→降级" style="endArrow=classic;html=1;strokeColor=#e53935;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="680" y="220" as="sourcePoint" /><mxPoint x="680" y="250" as="targetPoint" /></mxGeometry></mxCell>
+
+        <mxCell id="df2" value="方法2: psutil 检查&#10;MsMpEng.exe 进程" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="580" y="250" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="dfd2n" value="否→降级" style="endArrow=classic;html=1;strokeColor=#e53935;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="680" y="310" as="sourcePoint" /><mxPoint x="680" y="340" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="df3" value="方法3: sc query WinDefend&#10;(服务管理器)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#e53935;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="580" y="340" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Encoding fix note -->
+        <mxCell id="enc_note" value="🔧 关键修复: 所有 subprocess.run() 显式指定 encoding=&quot;utf-8&quot;, errors=&quot;replace&quot;&#10;避免 Windows 中文系统 GBK 编码导致的 UnicodeDecodeError 崩溃" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff9800;fontSize=10;fontColor=#e65100;align=center;" vertex="1" parent="1">
+          <mxGeometry x="180" y="630" width="640" height="40" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
