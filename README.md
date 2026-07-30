@@ -1,12 +1,12 @@
 # 🛡️ AI 网络安全管家
 
-> **嵌入式硬件 + 桌面安全监控 + AI Agent 三位一体的开源安全守护系统**
+> **嵌入式硬件 + 桌面安全监控 + AI Agent + 纵深防御 四位一体的开源安全守护系统**
 >
-> ESP32 物理终端实时显示安全状态 · ReAct AI Agent 智能分析威胁 · 向量知识库越用越聪明
-> 全部零件可在淘宝买到，成本仅 ¥33-100
+> ESP32 物理终端实时显示安全状态 · ReAct AI Agent 智能分析威胁 · 运行时自审计防篡改
+> 下载前置扫描 + 网络隔离 + Windows 防火墙 · 全部零件淘宝可买，成本仅 ¥33-100
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-3.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-3.3-blue" alt="version">
   <img src="https://img.shields.io/badge/python-3.10+-green" alt="python">
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-brightgreen" alt="license">
@@ -133,7 +133,7 @@ $ python agent_cli.py "全面扫描我的网络安全"
 ### 🤖 AI Agent (ReAct 智能大脑)
 - ✅ **ReAct 循环** — Think → Act → Observe，最多 10 轮迭代
 - ✅ **多模型支持** — DeepSeek / 智谱 AI / 硅基流动，自动故障转移
-- ✅ **20+ 内置工具** — 安全扫描、威胁情报、CVE 查询、命令沙箱
+- ✅ **30+ 内置工具** — 安全扫描、威胁情报、CVE 查询、命令沙箱、自审计、ESP32 隔离、下载扫描
 - ✅ **流式输出** — CLI 模式下 LLM 回复逐字显示
 - ✅ **CLI 对话模式** — `/tools` `/save` `/kb` `/run` 等斜杠命令
 
@@ -168,6 +168,26 @@ $ python agent_cli.py "全面扫描我的网络安全"
 ### 🔒 安全沙箱
 - ✅ **6 层隔离** — 命令白名单 (19+) → Job Object → Restricted Token → 资源限制 → 文件守卫 → 审计日志
 - ✅ **fail-closed** — 任一层失败，默认拒绝执行
+
+### 🛡️ 运行时自审计 (v3.3 新增)
+- ✅ **启动自检** — 每次启动自动验证代码完整性，被篡改立即告警
+- ✅ **7 层审计** — 文件哈希 → 依赖审计 → 配置守卫 → 运行时完整性 → 代码注入扫描 → 网络自查 → 沙箱测试
+- ✅ **完整性清单** — SHA256 哈希基线，`git pull` 后一键更新
+- ✅ **0-100 评分** — 综合安全评分，严重问题熔断告警
+
+### 🔌 ESP32 网络隔离 (v3.3 新增)
+- ✅ **Serial 纯显示** — 默认仅 USB Serial 通信，ESP32 无法触网
+- ✅ **命令白名单** — 6 种合法指令，连续 10 次非法即熔断
+- ✅ **速率限制** — 每秒最多 20 条，防串口洪泛攻击
+- ✅ **外泄防护** — ESP32 回传数据不得离开本机
+- ✅ **Windows 防火墙** — 内核级封锁 C2 端口 (4444/31337/6666 等)
+- ✅ **固件指纹** — 启动握手验证，检测固件替换
+
+### 🔍 下载前置扫描 (v3.3 新增)
+- ✅ **Skill 安装前扫描** — 提示注入、隐藏 Unicode、代码执行模式检测
+- ✅ **MCP 推荐前扫描** — 危险 flag、typosquatting 仿冒检测
+- ✅ **curl|bash 拦截** — #1 攻击向量直接拒绝
+- ✅ **Claude Code Hook** — Write/Bash 操作自动触发扫描
 
 ### 💻 用户界面 (4 种)
 | 界面 | 启动方式 | 说明 |
@@ -264,6 +284,22 @@ python agent_cli.py "扫描我的网络安全"
 
 或双击 `start_guardian.bat` 一键启动。
 
+### 6. 安全基线 (首次运行必做)
+
+```bash
+# 生成完整性基线 (记录所有文件的 SHA256 哈希)
+python generate_integrity_manifest.py
+
+# 运行完整自审计 (验证系统未被篡改)
+python agent/self_audit.py --full
+
+# ESP32 网络隔离审计
+python agent/esp32_isolation.py --audit
+
+# 安装 Windows 防火墙规则 (需管理员)
+powershell -File firewall_isolation.ps1
+```
+
 ---
 
 ## 📂 项目结构
@@ -297,16 +333,19 @@ ai-security-guardian/
 │   ├── core.py                        #   ReAct Agent 核心循环
 │   ├── config.py                      #   Agent 配置 + 系统提示词
 │   ├── llm.py                         #   LLM 路由器 (function calling)
-│   ├── tools.py                       #   工具注册表 + 20+ 内置工具
+│   ├── tools.py                       #   工具注册表 + 30+ 内置工具
 │   ├── mcp_client.py                  #   MCP JSON-RPC 客户端
 │   ├── mcp_server_mode.py             #   MCP Server 模式 (供外部调用)
 │   ├── sandbox.py                     #   6 层安全沙箱
+│   ├── self_audit.py                  #   运行时自审计引擎 (v3.3)
+│   ├── esp32_isolation.py             #   ESP32 网络隔离守护 (v3.3)
+│   ├── download_scanner.py            #   下载前置安全扫描 (v3.3)
 │   ├── skill_loader.py                #   .md 技能自动加载
 │   ├── knowledge_base.py              #   向量知识库 (ChromaDB)
 │   ├── defender_tools.py              #   Defender + NVD CVE
 │   ├── otx_tools.py                   #   AlienVault OTX 威胁情报
 │   ├── web_tools.py                   #   DuckDuckGo 搜索 + 抓取
-│   └── installer.py                   #   技能安装 + MCP 推荐
+│   └── installer.py                   #   技能安装 + MCP 推荐 (含扫描)
 │
 ├── firmware/                          # 🔌 ESP32 固件
 │   ├── character_engine.h             #   角色动画引擎
@@ -318,6 +357,8 @@ ai-security-guardian/
 │   ├── network_scan.md                #   网络扫描分析
 │   ├── process_check.md               #   进程行为检查
 │   ├── ransomware_check.md            #   勒索软件检测
+│   ├── self_audit.md                  #   自审计触发规则 (v3.3)
+│   ├── download_safety.md             #   下载前置扫描规则 (v3.3)
 │   └── user/                          #   用户自定义技能
 │
 ├── tests/                             # 🧪 单元测试
@@ -395,7 +436,10 @@ PC Agent 与 ESP32 通过 JSON over Serial (115200bps) 通信：
 ```yaml
 # 设备连接
 device:
-  mode: auto          # serial | wifi | auto | none
+  mode: serial         # serial (推荐, 网络隔离) | wifi | none
+  serial:
+    port: auto
+    baudrate: 115200
 
 # 安全监控
 security:
@@ -410,29 +454,18 @@ security:
 # 大模型 API
 llm:
   enabled: true
-  default_model: "deepseek-v4-pro"  # 或 glm-4-flash (免费)
+  default_model: "deepseek-v4-pro"
   deepseek:
     enabled: true
     api_key: "${DEEPSEEK_API_KEY}"
-  # rate_limit:
-  #   max_per_minute: 10
 
-# MCP 服务器 (扩展工具)
-mcp_servers:
-  # - name: external-tool
-  #   transport: stdio
-  #   command: "python -m some_mcp_server"
-
-# Web Dashboard
-dashboard:
-  enabled: true
-  port: 5000
+# MCP 服务器 (扩展工具, 安装前自动安全扫描)
+mcp_servers: []
 
 # 知识库
 knowledge_base:
   enabled: true
   top_k: 3
-  embedding_model: "paraphrase-multilingual-MiniLM-L12-v2"
 ```
 
 ---
@@ -456,6 +489,10 @@ knowledge_base:
 | **威胁情报** | AlienVault OTX + NIST NVD | 免费 API |
 | **搜索** | DuckDuckGo Lite | 免费无 Key |
 | **安全沙箱** | Job Object + Restricted Token + 白名单 | 6 层隔离 |
+| **自审计** | SHA256 哈希 + 依赖扫描 + 代码注入检测 | 启动时自动运行 |
+| **网络隔离** | 串口白名单 + 防火墙 C2 封锁 + 外泄防护 | ESP32 零网络暴露 |
+| **前置扫描** | Regex 模式库 + Unicode 隐藏检测 + Typo 检测 | 安装前自动拦截 |
+| **Claude Code** | PreToolUse Hook | Write/Bash 操作自动安检 |
 | **测试** | pytest + unittest.mock | 单元测试 |
 
 ---
@@ -531,13 +568,49 @@ pytest tests/ -v
 
 ---
 
+---
+
+## 🛡️ 纵深防御体系 (v3.3)
+
+```
+外部攻击面
+    │
+    ▼
+┌─────────────────────────────────────────────┐
+│ 第 0 层: 下载前置扫描                         │
+│   Claude Code Hook → download_scanner       │
+│   拦截: 提示注入 / 隐藏 Unicode / curl|bash  │
+├─────────────────────────────────────────────┤
+│ 第 1 层: 启动自审计                           │
+│   GuardianController → quick_check (~1s)    │
+│   验证: 文件哈希 / 依赖 / 配置 / 运行时       │
+├─────────────────────────────────────────────┤
+│ 第 2 层: ESP32 网络隔离                       │
+│   DeviceBridge → cmd_validator + egress_grd │
+│   Windows Firewall → C2 端口内核级封锁       │
+├─────────────────────────────────────────────┤
+│ 第 3 层: 6 层安全沙箱                         │
+│   白名单 → Job Object → Token → 资源 → 文件   │
+├─────────────────────────────────────────────┤
+│ 第 4 层: AI Agent 守则                        │
+│   系统提示词约束 + Skill 触发匹配 + 25 工具   │
+├─────────────────────────────────────────────┤
+│ 第 5 层: 事后审计                             │
+│   self_audit --full (7 项, ~3s)             │
+│   定期验证 + 异常熔断                          │
+└─────────────────────────────────────────────┘
+```
+
+---
+
 ## 🗺️ 路线图
 
+- [x] 运行时自审计 (v3.3) — 7 层完整性验证
+- [x] ESP32 网络隔离 (v3.3) — 纯显示外设, 零网络暴露
+- [x] 下载前置扫描 (v3.3) — Skill/MCP/插件安装前自动安检
 - [ ] 角色自定义编辑器 (GUI)
-- [ ] 更多 MCP Server 示例
 - [ ] Linux/macOS 跨平台支持
 - [ ] 移动端 App (查看远程安全状态)
-- [ ] 威胁检测规则热更新
 - [ ] 社区技能市场
 
 ---
