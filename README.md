@@ -23,7 +23,7 @@
 
 ```
 ┌──────────────────────┐       ┌──────────────────────┐
-│ ▂▃▄▅ ●           SAFE│       │ ▂▃▄▅ 🔴(闪)    DANGER│
+│ ▂▃▄▅ ●           SAFE│       │ ▂▃▄▅     DANGER│
 │────────────────────│       │══════════════════════│
 │                      │       │                      │
 │   (･ω･)              │       │   (>_<)              │
@@ -32,7 +32,7 @@
 │   FW:ON  AV:ON       │       │   ⚠ DANGER ⚠        │
 │   连接: 42  威胁: 0   │       │   威胁: 3  连接: 55  │
 └──────────────────────┘       └──────────────────────┘
-   安全模式 (表情屏)              危险模式 (告警 + 蜂鸣器)
+   安全模式 (表情屏)              危险模式 
 ```
 
 ### PyQt5 桌面 GUI
@@ -92,7 +92,6 @@ $ python agent_cli.py "全面扫描我的网络安全"
 │  ┌──────────────────────────┐                              │  │
 │  │   ESP32 + OLED/TFT        │                              │  │
 │  │   角色动画 + 安全仪表盘    │                              │  │
-│  │   RGB LED + 蜂鸣器 (可选)  │                              │  │
 │  └──────────────────────────┘                              │  │
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐  │
@@ -236,14 +235,10 @@ pip install chromadb sentence-transformers
 编辑 `pc_agent/config.yaml` 或设置环境变量：
 
 ```bash
-# 推荐: 智谱 glm-4-flash (免费)
-set ZHIPU_API_KEY=your-key
-
-# 或 DeepSeek
+# 推荐: DeepSeek
 set DEEPSEEK_API_KEY=sk-your-key
 
-# 或硅基流动 (新用户免费额度)
-set SILICONFLOW_API_KEY=sk-your-key
+
 ```
 
 > 💡 不配置 API Key 也可运行 — 角色将使用本地台词库，Agent CLI 功能受限。
@@ -259,8 +254,6 @@ python pc_agent/main.py --gui
 # 或者 CLI 模式
 python pc_agent/main.py
 
-# 仅 Web Dashboard (不连接设备)
-python pc_agent/main.py --no-device
 
 # AI Agent 对话模式
 python agent_cli.py --chat
@@ -316,9 +309,7 @@ ai-security-guardian/
 │   └── installer.py                   #   技能安装 + MCP 推荐
 │
 ├── firmware/                          # 🔌 ESP32 固件
-│   ├── firmware.ino                   #   主固件 OLED 128×64 (v3.0)
 │   ├── character_engine.h             #   角色动画引擎
-│   ├── characters/                    #   角色精灵数据
 │   ├── firmware_tdisplay/             #   T-Display TFT 彩色固件
 │   └── oled_test/                     #   OLED I2C 诊断工具
 │
