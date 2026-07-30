@@ -82,6 +82,10 @@ def install_skill(name: str, description: str, content: str,
     They are NEVER executed as code. The worst a malicious skill can do
     is add bad instructions to the prompt — which is harmless because
     the LLM cannot modify core code or config.
+
+    SECURITY (v3.3): All skill content is pre-scanned by download_scanner
+    before installation. Prompt injection, hidden text, obfuscation, and
+    code execution patterns are detected and rejected.
     """
     if not name or not content:
         return {"success": False, "error": "name and content required"}
@@ -93,22 +97,34 @@ def install_skill(name: str, description: str, content: str,
 
     file_path = os.path.join(SKILLS_DIR, f"{safe_name}.md")
 
-    # Security check
+    # Security check 1: Path safety
     allowed, reason = _is_path_safe(file_path)
     if not allowed:
         logger.warning(f"Skill install blocked: {file_path} — {reason}")
         return {"success": False, "error": f"Path blocked: {reason}"}
 
-    # Content sanitization: reject anything that looks like code injection
-    content_lower = content.lower()
-    dangerous = [
-        "os.system", "subprocess", "exec(", "eval(", "__import__",
-        "rm -rf", "del /f", "format c:", "shutdown",
-    ]
-    for pattern in dangerous:
-        if pattern in content_lower:
-            return {"success": False,
-                    "error": f"Dangerous content detected: '{pattern}'"}
+    # Security check 2: Download scanner (v3.3 — comprehensive scan)
+    try:
+        from agent.download_scanner import quick_scan_skill
+        scan_result = quick_scan_skill(safe_name, content, source="install_skill")
+        if not scan_result["passed"]:
+            logger.warning(f"Skill '{safe_name}' REJECTED by security scanner")
+            return {
+                "success": False,
+                "error": "Content rejected by security scanner",
+                "scan_result": scan_result,
+            }
+    except ImportError:
+        # Fallback: basic sanitization if scanner not available
+        content_lower = content.lower()
+        dangerous = [
+            "os.system", "subprocess", "exec(", "eval(", "__import__",
+            "rm -rf", "del /f", "format c:", "shutdown",
+        ]
+        for pattern in dangerous:
+            if pattern in content_lower:
+                return {"success": False,
+                        "error": f"Dangerous content detected: '{pattern}'"}
 
     # Build frontmatter
     trigger_list = [t.strip() for t in triggers.split(",") if t.strip()]
@@ -147,9 +163,23 @@ def recommend_mcp_server(name: str, install_command: str,
 
     SECURITY: MCP servers can execute arbitrary code. The user must review
     and manually add to config.yaml. This tool only provides instructions.
+
+    SECURITY (v3.3): Install command is pre-scanned for dangerous flags,
+    typosquatting, and malicious patterns before recommendation.
     """
     if not name or not install_command:
         return {"success": False, "error": "name and install_command required"}
+
+    # Security check: scan the install command before recommending
+    scan_warnings = []
+    try:
+        from agent.download_scanner import quick_scan_mcp
+        scan_result = quick_scan_mcp(name, install_command, description)
+        if not scan_result["passed"]:
+            scan_warnings = scan_result["findings"]
+            logger.warning(f"MCP recommendation '{name}' flagged by scanner: {scan_warnings}")
+    except ImportError:
+        pass
 
     # Generate config snippet for the user
     config_snippet = f"""  - name: {name}
@@ -163,6 +193,10 @@ def recommend_mcp_server(name: str, install_command: str,
                 "They can execute arbitrary code. Please review and "
                 "manually add to pc_agent/config.yaml → mcp_servers:",
         "config_snippet": config_snippet,
+        "security_scan": {
+            "passed": len(scan_warnings) == 0,
+            "warnings": scan_warnings,
+        },
         "steps": [
             f"1. Review this MCP server: {description}",
             f"2. Verify the install command: {install_command}",

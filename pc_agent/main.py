@@ -233,6 +233,11 @@ class GuardianController:
         self.logger.info("=" * 50)
         self.running = True
 
+        # ================================================================
+        #  启动前自审计 — 先保证自己没被篡改，再保护别人
+        # ================================================================
+        self._run_startup_integrity_check()
+
         # 连接设备
         if not self.device.connect():
             self.logger.warning("⚠️  设备未连接，将使用桌面 GUI 监控")
@@ -456,6 +461,45 @@ class GuardianController:
         with self.state_lock:
             state_copy = self.state.copy()
         self.device.send_update(state_copy)
+
+    def _run_startup_integrity_check(self):
+        """
+        启动前快速自审计 — 确保 Guardian 自身未被篡改。
+        只执行关键检查 (~1s)，不影响启动速度。
+        发现问题时记录严重警告但不阻止启动（用户可能正在调试）。
+        """
+        try:
+            from agent.self_audit import SelfAuditor
+            auditor = SelfAuditor()
+            result = auditor.quick_check()
+
+            if result["ok"]:
+                self.logger.info("🔒 启动自检通过 — 系统完整性已确认")
+            else:
+                issues = result.get("issues", [])
+                critical = [i for i in issues if i.get("severity") == "CRITICAL"]
+                high = [i for i in issues if i.get("severity") == "HIGH"]
+
+                self.logger.warning("=" * 50)
+                self.logger.warning("⚠️  启动自检发现问题!")
+                self.logger.warning(f"   CRITICAL: {len(critical)}  HIGH: {len(high)}")
+                for issue in critical[:5]:
+                    self.logger.warning(f"   🔴 {issue.get('issue', str(issue))}")
+                for issue in high[:5]:
+                    self.logger.warning(f"   🟡 {issue.get('issue', str(issue))}")
+                self.logger.warning("")
+                self.logger.warning("💡 运行完整审计: python agent/self_audit.py --full")
+                if critical:
+                    self.logger.warning("🚨 检测到严重问题! 建议:")
+                    self.logger.warning("   1. 运行 git diff 检查代码变更")
+                    self.logger.warning("   2. 运行 pip list 检查可疑包")
+                    self.logger.warning("   3. 如 API Key 泄露，立即重置!")
+                self.logger.warning("=" * 50)
+
+        except ImportError as e:
+            self.logger.debug("自审计模块不可用: %s", e)
+        except Exception as e:
+            self.logger.warning("启动自检执行失败: %s", e)
 
     # 提供给 GUI 的接口
     def get_state(self) -> dict:

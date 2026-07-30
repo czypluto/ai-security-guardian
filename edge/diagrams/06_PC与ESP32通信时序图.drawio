@@ -35,7 +35,7 @@
         <mxCell id="a2" value="Serial 自动检测 COM 口 / WiFi TCP 连接" style="endArrow=classic;html=1;strokeColor=#4caf50;fontSize=10;" edge="1" parent="1">
           <mxGeometry relative="1" as="geometry"><mxPoint x="400" y="160" as="sourcePoint" /><mxPoint x="700" y="160" as="targetPoint" /></mxGeometry>
         </mxCell>
-        <mxCell id="a2r" value="{"status":"ready"}" style="endArrow=classic;html=1;strokeColor=#e91e63;fontSize=10;dashed=1;" edge="1" parent="1">
+        <mxCell id="a2r" value='{"status":"ready"}' style="endArrow=classic;html=1;strokeColor=#e91e63;fontSize=10;dashed=1;" edge="1" parent="1">
           <mxGeometry relative="1" as="geometry"><mxPoint x="700" y="195" as="sourcePoint" /><mxPoint x="400" y="195" as="targetPoint" /></mxGeometry>
         </mxCell>
 
@@ -57,7 +57,7 @@
         <mxCell id="a5" value='{"cmd":"update", "sec_level":"safe", "threat_count":0, "active_connections":42, "cpu_usage":23.5, ...}' style="endArrow=classic;html=1;strokeColor=#4caf50;fontSize=9;" edge="1" parent="1">
           <mxGeometry relative="1" as="geometry"><mxPoint x="400" y="350" as="sourcePoint" /><mxPoint x="700" y="350" as="targetPoint" /></mxGeometry>
         </mxCell>
-        <mxCell id="a5r" value="{"status":"ok"}" style="endArrow=classic;html=1;strokeColor=#e91e63;fontSize=10;dashed=1;" edge="1" parent="1">
+        <mxCell id="a5r" value='{"status":"ok"}' style="endArrow=classic;html=1;strokeColor=#e91e63;fontSize=10;dashed=1;" edge="1" parent="1">
           <mxGeometry relative="1" as="geometry"><mxPoint x="700" y="385" as="sourcePoint" /><mxPoint x="400" y="385" as="targetPoint" /></mxGeometry>
         </mxCell>
 
@@ -65,10 +65,10 @@
         <mxCell id="s5" value="3. 用户切换屏幕" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#333;" vertex="1" parent="1">
           <mxGeometry x="145" y="415" width="100" height="18" as="geometry" />
         </mxCell>
-        <mxCell id="a6" value="send_command({"cmd":"screen","screen":1})" style="endArrow=classic;html=1;strokeColor=#1565c0;fontSize=9;" edge="1" parent="1">
+        <mxCell id="a6" value='send_command({&quot;cmd&quot;:&quot;screen&quot;,&quot;screen&quot;:1})' style="endArrow=classic;html=1;strokeColor=#1565c0;fontSize=9;" edge="1" parent="1">
           <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="435" as="sourcePoint" /><mxPoint x="700" y="435" as="targetPoint" /></mxGeometry>
         </mxCell>
-        <mxCell id="a6r" value="{"status":"ok"}" style="endArrow=classic;html=1;strokeColor=#e91e63;fontSize=10;dashed=1;" edge="1" parent="1">
+        <mxCell id="a6r" value='{"status":"ok"}' style="endArrow=classic;html=1;strokeColor=#e91e63;fontSize=10;dashed=1;" edge="1" parent="1">
           <mxGeometry relative="1" as="geometry"><mxPoint x="700" y="465" as="sourcePoint" /><mxPoint x="400" y="465" as="targetPoint" /></mxGeometry>
         </mxCell>
         <mxCell id="s5n" value="[ESP32: 切换至仪表盘]" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#e91e63;" vertex="1" parent="1">
@@ -79,7 +79,7 @@
         <mxCell id="s6" value="4. 检测到威胁" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#b71c1c;" vertex="1" parent="1">
           <mxGeometry x="145" y="505" width="80" height="18" as="geometry" />
         </mxCell>
-        <mxCell id="a7" value="send_alert("可疑连接: 192.168.1.100:4444")" style="endArrow=classic;html=1;strokeColor=#b71c1c;fontSize=9;fontStyle=1;" edge="1" parent="1">
+        <mxCell id="a7" value="send_alert(&quot;可疑连接: 192.168.1.100:4444&quot;)" style="endArrow=classic;html=1;strokeColor=#b71c1c;fontSize=9;fontStyle=1;" edge="1" parent="1">
           <mxGeometry relative="1" as="geometry"><mxPoint x="150" y="525" as="sourcePoint" /><mxPoint x="700" y="525" as="targetPoint" /></mxGeometry>
         </mxCell>
         <mxCell id="s6n" value="[ESP32: 双线边框 + 🔴LED + 蜂鸣器5声]" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#b71c1c;fontStyle=1;" vertex="1" parent="1">
@@ -104,7 +104,7 @@
         <mxCell id="dl1" value="30秒无数据 → 超时" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#ff9800;" vertex="1" parent="1">
           <mxGeometry x="710" y="630" width="140" height="15" as="geometry" />
         </mxCell>
-        <mxCell id="dl2" value="[ESP32: 显示 "!!" + "DISCONNECTED"]" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#ff9800;" vertex="1" parent="1">
+        <mxCell id="dl2" value="[ESP32: 显示 &quot;!!&quot; + &quot;DISCONNECTED&quot;]" style="text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#ff9800;" vertex="1" parent="1">
           <mxGeometry x="710" y="648" width="180" height="15" as="geometry" />
         </mxCell>
 

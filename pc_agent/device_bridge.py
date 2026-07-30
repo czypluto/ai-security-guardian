@@ -1,25 +1,41 @@
 """
 设备通信桥 —— 与 ESP32 设备通信
 支持 Serial (USB) 和 WiFi 两种模式
+
+安全加固 (v3.3):
+  - 串口命令白名单验证 (SerialCommandValidator)
+  - 速率限制 + 无效命令熔断
+  - WiFi 模式默认禁用, 需显式开启
+  - 串口数据外泄防护 (SerialEgressGuard)
 """
 
 import json
+import sys
 import time
 import logging
 import threading
+from pathlib import Path
 from typing import Optional
 
 import serial
 import serial.tools.list_ports
 
+# 安全模块 (可选, 不存在时优雅降级)
+try:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from agent.esp32_isolation import SerialCommandValidator, SerialEgressGuard
+    HAS_ISOLATION = True
+except ImportError:
+    HAS_ISOLATION = False
+
 
 class DeviceBridge:
-    """ESP32 设备通信管理"""
+    """ESP32 设备通信管理 (安全加固版)"""
 
     def __init__(self, config: dict, logger: logging.Logger):
         self.config = config
         self.logger = logger
-        self.mode = config.get('mode', 'auto')
+        self.mode = config.get('mode', 'serial')  # 默认 Serial, 不再 auto
         self.serial_conn: Optional[serial.Serial] = None
         self.wifi_sock = None
         self.connected = False
@@ -31,31 +47,43 @@ class DeviceBridge:
         self._reader_thread = None
         self._running = False
 
+        # === 安全加固 ===
+        self._cmd_validator = SerialCommandValidator() if HAS_ISOLATION else None
+        self._egress_guard = SerialEgressGuard() if HAS_ISOLATION else None
+        self._cmd_rate_window = []  # 速率限制滑动窗口
+        self._max_cmds_per_sec = 20  # 每秒最多 20 条命令
+
+        if self._egress_guard:
+            self._egress_guard.enable_monitoring()
+            logger.info("Serial egress guard enabled — ESP32 data stays local")
+
     def connect(self) -> bool:
-        """自动选择模式连接设备"""
+        """自动选择模式连接设备 (安全: 默认仅 Serial, WiFi 需显式配置)"""
         if self.mode == 'none':
             self.logger.info("设备连接已禁用")
             return False
 
-        # 尝试 Serial 模式
+        # WiFi 模式需显式确认 (不再 auto 尝试)
+        if self.mode == 'wifi':
+            self.logger.warning("WiFi 模式需要 ESP32 开启 WiFi — 这会暴露 ESP32 到网络!")
+            self.logger.warning("建议使用 Serial (USB) 模式以确保网络隔离")
+            if self._connect_wifi():
+                self.connected = True
+                self.logger.info(f"WiFi 连接: {self.config.get('wifi', {}).get('host')}")
+                self._start_background_tasks()
+                return True
+            return False
+
+        # Serial 模式 (默认 + auto 也只尝试 Serial)
         if self.mode in ('serial', 'auto'):
             if self._connect_serial():
                 self.connected = True
                 self.mode = 'serial'
-                self.logger.info(f"✅ 通过 Serial 连接设备: {self.serial_conn.port}")
+                self.logger.info(f"Serial 连接: {self.serial_conn.port}")
                 self._start_background_tasks()
                 return True
 
-        # 尝试 WiFi 模式
-        if self.mode in ('wifi', 'auto'):
-            if self._connect_wifi():
-                self.connected = True
-                self.mode = 'wifi'
-                self.logger.info(f"✅ 通过 WiFi 连接设备: {self.config.get('wifi', {}).get('host')}")
-                self._start_background_tasks()
-                return True
-
-        self.logger.warning("⚠️  无法连接到设备")
+        self.logger.warning("无法连接到设备")
         return False
 
     def _connect_serial(self) -> bool:
@@ -228,7 +256,26 @@ class DeviceBridge:
         self._send_command(cmd)
 
     def _send_command(self, cmd: dict):
-        """底层命令发送"""
+        """底层命令发送 (安全加固: 白名单验证 + 速率限制)"""
+        # 安全验证
+        if self._cmd_validator:
+            valid, reason = self._cmd_validator.validate(cmd)
+            if not valid:
+                self.logger.warning(f"命令被拒绝: {reason} — {str(cmd)[:80]}")
+                return
+            if self._cmd_validator.locked_down:
+                self.logger.critical("串口桥已熔断! 拒绝所有命令直到手动复位")
+                return
+
+        # 速率限制
+        now = time.time()
+        self._cmd_rate_window = [t for t in self._cmd_rate_window if now - t < 1.0]
+        if len(self._cmd_rate_window) >= self._max_cmds_per_sec:
+            self.logger.warning(f"速率限制: 每秒 {self._max_cmds_per_sec} 条命令上限")
+            return
+        self._cmd_rate_window.append(now)
+
+        # 发送
         json_str = json.dumps(cmd, ensure_ascii=False)
         try:
             if self.mode == 'serial':
@@ -311,6 +358,25 @@ class DeviceBridge:
                 self.logger.error("❌ 设备重连次数耗尽, 请检查硬件连接")
         finally:
             self._reconnect_lock.release()
+
+    def reset_security_lockdown(self):
+        """手动复位串口安全熔断 (需要物理确认 ESP32 未被篡改后调用)"""
+        if self._cmd_validator:
+            self._cmd_validator.reset_counters()
+            self.logger.info("串口安全熔断已复位")
+
+    def get_security_stats(self) -> dict:
+        """获取串口安全统计"""
+        if self._cmd_validator and self._egress_guard:
+            return {
+                **self._cmd_validator.get_stats(),
+                **self._egress_guard.get_stats(),
+                "rate_limit": {
+                    "current_rate_per_sec": len(self._cmd_rate_window),
+                    "max_per_sec": self._max_cmds_per_sec,
+                },
+            }
+        return {}
 
     @property
     def is_connected(self) -> bool:

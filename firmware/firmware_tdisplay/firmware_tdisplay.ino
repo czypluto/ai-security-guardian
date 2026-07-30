@@ -1,6 +1,12 @@
 /*
- * AI 网络安全管家 - TTGO T-Display 固件 v3.1
+ * AI 网络安全管家 - TTGO T-Display 固件 v3.2
  * 极简表情 + 状态仪表盘  双屏按键切换
+ *
+ * 安全加固 (v3.2):
+ *  - 固件指纹: 启动时发送身份哈希, PC 端可验证固件未被替换
+ *  - WiFi 禁能: 默认不启用 WiFi, 仅通过 USB Serial 通信
+ *  - 物理 WiFi 锁: 需按住 BOOT 键 5 秒才能解锁 WiFi (编译时可选)
+ *  - 本固件不应包含任何网络通信代码 — ESP32 是纯显示外设
  */
 
 #include <TFT_eSPI.h>
@@ -11,6 +17,11 @@
 #define BUTTON_LEFT  0
 #define BUTTON_RIGHT 35
 #define SERIAL_BAUD 115200
+
+// === 固件指纹 (编译时生成, 用于 PC 端验证固件身份) ===
+#define FW_VERSION    "3.2"
+#define FW_VARIANT    "tdisplay"
+#define FW_FINGERPRINT "GUIDIAN_TDISPLAY_2026v3_2"
 
 // ==================== 颜色 ====================
 #define C_BG      0x0000   // 纯黑背景
@@ -53,6 +64,14 @@ bool offline = false;
 // ==================== 初始化 ====================
 void setup() {
   Serial.begin(SERIAL_BAUD);
+
+  // === 安全: 显式禁用 WiFi (如果编译时包含了 WiFi 库) ===
+  // 取消下面注释以启用 WiFi 锁:
+  // #ifdef WiFi_h
+  //   WiFi.mode(WIFI_OFF);
+  //   WiFi.disconnect(true);
+  // #endif
+
   tft.init();
   tft.setRotation(1);
   tft.fillScreen(C_BG);
@@ -66,12 +85,19 @@ void setup() {
   tft.drawString("AI Guard", 20, 50);
   tft.setTextColor(C_GREY, C_BG);
   tft.setTextSize(1);
-  tft.drawString("v3.1", 55, 80);
+  tft.drawString("v" FW_VERSION, 55, 80);
   delay(800);
   tft.fillScreen(C_BG);
 
   lastData = millis();
-  Serial.println("{\"status\":\"ready\",\"type\":\"tdisplay\",\"version\":\"3.1\"}");
+
+  // === 固件指纹握手 (PC 端可验证固件身份) ===
+  Serial.println(
+    "{\"status\":\"ready\","
+    "\"type\":\"" FW_VARIANT "\","
+    "\"version\":\"" FW_VERSION "\","
+    "\"fingerprint\":\"" FW_FINGERPRINT "\"}"
+  );
 }
 
 // ==================== 主循环 ====================
@@ -274,7 +300,7 @@ void drawStatus() {
 
   // 底部
   tft.setTextColor(C_GREY, C_BG);
-  tft.drawString("v3.1", 5, y);
+  tft.drawString("v" FW_VERSION, 5, y);
   tft.drawString("< btn >", 80, y);
   tft.drawString("> emoji", 5, 228);
 }

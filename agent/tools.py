@@ -18,6 +18,9 @@ from .defender_tools import (
 )
 from .web_tools import web_search, web_fetch
 from .installer import install_skill, recommend_mcp_server, list_installed_skills
+from .self_audit import run_full_audit, run_quick_check, run_network_self_check, run_file_verification
+from .esp32_isolation import run_isolation_audit, FirewallRuleManager
+from .download_scanner import scan_download_handler, scan_file_handler
 
 logger = logging.getLogger("Guardian.Tools")
 
@@ -561,6 +564,122 @@ def create_tool_registry() -> ToolRegistry:
         description="List all currently installed skills in the skills/ directory.",
         parameters={},
         handler=list_installed_skills,
+    ))
+
+    # ---- Self-Audit (runtime integrity) ----
+
+    registry.register(ToolDef(
+        name="self_audit",
+        description="Run a complete self-integrity audit on the AI Security Guardian "
+                    "itself. Checks 7 attack surfaces: file integrity (SHA256 hashes "
+                    "vs known-good manifest), dependency audit (suspicious pip packages, "
+                    "typosquatting detection), config guard (API key exposure, MCP "
+                    "redirect), runtime integrity (Python interpreter, loaded modules, "
+                    "environment variables), code injection scan (obfuscation patterns "
+                    "in source files), network self-check (guardian's own outbound "
+                    "connections), and sandbox integrity (verifies each of 6 layers "
+                    "actually works). Returns overall score (0-100) and detailed "
+                    "findings. Use this when you suspect the guardian itself may "
+                    "have been tampered with.",
+        parameters={},
+        handler=run_full_audit,
+    ))
+
+    registry.register(ToolDef(
+        name="self_check_network",
+        description="Check the AI Security Guardian's OWN network connections. "
+                    "Verifies that the guardian process itself is not making "
+                    "suspicious outbound connections (C2 ports like 4444, 31337, "
+                    "6666, etc.). Use this periodically to detect if the guardian "
+                    "has been turned into a botnet node.",
+        parameters={},
+        handler=run_network_self_check,
+    ))
+
+    registry.register(ToolDef(
+        name="self_verify_files",
+        description="Verify project Python files against the integrity manifest "
+                    "(SHA256 hashes of known-good code). Detects: modified files "
+                    "(possible backdoor injected), deleted files (tampering), "
+                    "and new unexpected files. The manifest must be generated "
+                    "first with: python agent/self_audit.py --generate-manifest",
+        parameters={},
+        handler=run_file_verification,
+    ))
+
+    # ---- ESP32 Network Isolation ----
+
+    registry.register(ToolDef(
+        name="esp32_isolation_audit",
+        description="Audit ESP32 network isolation. Checks: firmware WiFi/OTA "
+                    "status, Windows Firewall rules, DeviceBridge serial mode, "
+                    "and firmware integrity. The ESP32 should be a DISPLAY-ONLY "
+                    "device — it must never reach the internet. Returns "
+                    "isolation status (SECURE/VULNERABLE) and recommendations.",
+        parameters={},
+        handler=run_isolation_audit,
+    ))
+
+    registry.register(ToolDef(
+        name="esp32_generate_firewall_rules",
+        description="Generate a Windows Firewall PowerShell script to block "
+                    "the guardian Python process on C2/backdoor ports and "
+                    "all inbound connections. DOES NOT execute — returns "
+                    "the script path for manual review and execution as "
+                    "Administrator.",
+        parameters={},
+        handler=lambda: {
+            "script_path": str(
+                __import__("pathlib").Path(__file__).parent.parent / "firewall_isolation.ps1"
+            ),
+            "message": "Run as Administrator: powershell -File firewall_isolation.ps1",
+            "script_content": FirewallRuleManager.generate_rules_script(),
+        },
+    ))
+
+    # ---- Download Pre-Scan (v3.3) ----
+
+    registry.register(ToolDef(
+        name="scan_download",
+        description="Security scan downloaded content BEFORE installing it. "
+                    "Detects: prompt injection patterns, hidden Unicode text, "
+                    "code execution patterns, obfuscation, suspicious URLs, "
+                    "and typosquatting. MUST be called before installing any "
+                    "skill, MCP server, plugin, or external tool. "
+                    "Returns: safe/unsafe verdict, score (0-100), and "
+                    "detailed findings.",
+        parameters={
+            "content": {
+                "type": "string",
+                "description": "The content to scan (full text of the file)",
+            },
+            "file_type": {
+                "type": "string",
+                "description": "Type of content: 'skill', 'mcp_config', 'script', 'binary', or 'unknown'",
+                "default": "unknown",
+            },
+            "source": {
+                "type": "string",
+                "description": "Where the content came from (URL, filename, etc.)",
+                "default": "",
+            },
+        },
+        handler=scan_download_handler,
+    ))
+
+    registry.register(ToolDef(
+        name="scan_file",
+        description="Security scan an existing file on disk. Checks for "
+                    "prompt injection, code execution patterns, obfuscation, "
+                    "and suspicious URLs. Supports: .md (skills), .yaml/.json "
+                    "(configs), .py/.bat/.ps1/.sh (scripts).",
+        parameters={
+            "file_path": {
+                "type": "string",
+                "description": "Absolute path to the file to scan",
+            },
+        },
+        handler=scan_file_handler,
     ))
 
     return registry
