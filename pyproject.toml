@@ -1,0 +1,99 @@
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "ai-security-guardian"
+version = "2.0.0"
+description = "AI 网络安全管家 — Autonomous PC Agent with ESP32 hardware isolation"
+authors = ["AI Security Guardian Team"]
+license = "MIT"
+readme = "README.md"
+packages = [
+    { include = "agent" },
+    { include = "pc_agent" },
+]
+include = [
+    "agent_cli.py",
+    "generate_integrity_manifest.py",
+    "insert_diagrams.py",
+]
+
+[tool.poetry.scripts]
+guardian = "agent_cli:main"
+guardian-cli = "agent_cli:main"
+guardian-pc = "pc_agent.main:main"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+
+# 核心通信
+pyserial = ">=3.5"
+psutil = ">=5.9.0"
+pyyaml = ">=6.0"
+requests = ">=2.28.0"
+
+# Windows 安全 API
+pywin32 = { version = ">=306", markers = "sys_platform == 'win32'" }
+
+# 日志
+colorlog = ">=6.7.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0.0"
+pytest-mock = ">=3.10.0"
+pytest-timeout = ">=2.0.0"
+
+# ── 可选依赖组 ──────────────────────────────────────────────
+
+[tool.poetry.group.tray]
+optional = true
+
+[tool.poetry.group.tray.dependencies]
+pystray = ">=0.19.0"
+pillow = ">=10.0.0"
+
+[tool.poetry.group.gui]
+optional = true
+
+[tool.poetry.group.gui.dependencies]
+PyQt5 = ">=5.15.0"
+
+[tool.poetry.group.kb]
+optional = true
+
+[tool.poetry.group.kb.dependencies]
+chromadb = ">=0.4.0"
+sentence-transformers = ">=2.2.0"
+
+[tool.poetry.extras]
+tray = ["tray"]
+gui = ["gui"]
+kb = ["kb"]
+all = ["tray", "gui", "kb"]
+
+[tool.poetry.urls]
+Homepage = "https://github.com/czypluto/ai-security-guardian"
+Repository = "https://github.com/czypluto/ai-security-guardian"
+
+# ── Poetry 自身配置 ──────────────────────────────────────────
+[tool.poetry.requires-plugins]
+# Poetry 2.x 插件 (如需要)
+# poetry-plugin-export = "*"
+
+# ── pytest ────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+timeout = 30
+
+# ── Ruff / Linter (可选，便于后续接入) ─────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]
