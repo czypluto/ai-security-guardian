@@ -141,5 +141,6 @@ jobs:
 
       - name: Smoke test (import check)
         run: |
-          docker run --rm ai-security-guardian:ci-${{ github.sha }} \
-            python -c "from agent.config import AgentConfig; from agent.core import AgentCore; print('Import OK')"
+          # 镜像 ENTRYPOINT 是 python agent_cli.py, 需用 --entrypoint python 覆盖再传 -c
+          docker run --rm --entrypoint python ai-security-guardian:ci-${{ github.sha }} \
+            -c "from agent.config import AgentConfig; from agent.core import AgentCore; print('Import OK')"

@@ -19,6 +19,12 @@ include = [
     "insert_diagrams.py",
 ]
 
+# 国内网络加速: 清华 PyPI 镜像 (影响所有 poetry install: 本地/CI/Docker)
+[[tool.poetry.source]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+priority = "primary"
+
 [tool.poetry.scripts]
 guardian = "agent_cli:main"
 guardian-cli = "agent_cli:main"

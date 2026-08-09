@@ -28,6 +28,7 @@ COPY pyproject.toml poetry.lock poetry.toml ./
 
 # 安装依赖 (跳过 Windows 专用和可选组)
 # pywin32 通过 sys_platform=="win32" marker 在 Linux 上自动跳过
+# 清华镜像源已在 pyproject.toml [[tool.poetry.source]] 中全局配置
 RUN poetry install \
     --without tray,gui,kb \
     --no-root \
