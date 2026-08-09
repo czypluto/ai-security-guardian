@@ -257,7 +257,7 @@ pip install -r pc_agent/requirements.txt
 pip install chromadb sentence-transformers
 ```
 
-或直接运行 `installer/setup.bat` 一键安装。
+> 📌 **规划中**：一键安装 `installer/setup.bat` 尚未实现，请暂按上面的手动步骤安装。
 
 ### 4. 配置 LLM API Key
 
@@ -301,7 +301,7 @@ python agent_cli.py --chat
 python agent_cli.py "扫描我的网络安全"
 ```
 
-或双击 `start_guardian.bat` 一键启动。
+> 📌 **规划中**：一键启动 `start_guardian.bat` 尚未实现，请暂用上面的命令手动启动。
 
 ### 6. 安全基线 (首次运行必做)
 
@@ -328,7 +328,7 @@ ai-security-guardian/
 ├── README.md                          # 本文件
 ├── PROJECT_FULL_STORY.md              # 项目全纪实 (推荐阅读)
 ├── agent_cli.py                       # AI Agent CLI 入口
-├── start_guardian.bat                 # Windows 一键启动
+├── start_guardian.bat                 # Windows 一键启动 (规划中)
 ├── requirements-lock.txt              # 锁定依赖版本
 │
 ├── pc_agent/                          # 💻 PC 端安全引擎
@@ -402,8 +402,8 @@ ai-security-guardian/
 ├── enclosure/                         # 🖨️ 3D 外壳
 │   └── case_design.md                 #   外壳设计说明
 │
-├── installer/                         # 🪟 安装程序
-│   └── setup.bat                      #   Windows 一键安装
+├── installer/                         # 🪟 安装程序 (规划中)
+│   └── setup.bat                      #   Windows 一键安装 (规划中)
 │
 └── dify_designs/                      # 🎨 Dify 提示词设计
     ├── README.md
