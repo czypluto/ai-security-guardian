@@ -1,7 +1,7 @@
 # ============================================================
 # AI Security Guardian — CI/CD Pipeline
 # ============================================================
-# 触发: push / PR 到 main + 手动触发
+# 触发: push / PR 到任意分支 + 手动触发
 # 流程: Lint → Test (matrix Python 3.10/3.11/3.12) → Build Docker
 # ============================================================
 
@@ -9,7 +9,8 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
+    # 任意分支 push 都会触发（'**' 匹配所有分支名）
+    branches: ['**']
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -17,7 +18,8 @@ on:
       - "images/**"
       - "firmware/**"
   pull_request:
-    branches: [main]
+    # 任意目标分支的 PR 都会触发
+    branches: ['**']
     paths-ignore:
       - "**.md"
       - "docs/**"
