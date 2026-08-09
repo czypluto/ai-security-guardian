@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 安装 Poetry
 ENV POETRY_HOME="/opt/poetry" \
-    POETRY_VERSION="2.1.2"
+    POETRY_VERSION="2.4.1"
 RUN curl -sSL https://install.python-poetry.org | python3 - \
     && ln -s /opt/poetry/bin/poetry /usr/local/bin/poetry
 
