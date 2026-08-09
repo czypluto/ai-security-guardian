@@ -3,7 +3,6 @@
 """
 
 import logging
-import threading
 from collections import defaultdict
 from typing import Dict, List, Set
 

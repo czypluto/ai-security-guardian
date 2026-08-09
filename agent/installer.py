@@ -20,11 +20,8 @@ they require manual user approval.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
-from pathlib import Path
-from datetime import datetime
 
 logger = logging.getLogger("Guardian.Installer")
 

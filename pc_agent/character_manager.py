@@ -8,8 +8,7 @@ import json
 import logging
 import random
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from llm_client import MultiLLMClient
@@ -300,7 +299,7 @@ class CharacterManager:
             return "..."
 
         # 优先选没用过的
-        fresh = [l for l in lines if l not in self._used_lines]
+        fresh = [line for line in lines if line not in self._used_lines]
         if not fresh:
             self._used_lines.clear()
             fresh = lines

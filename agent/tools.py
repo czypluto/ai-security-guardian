@@ -9,18 +9,26 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
-from .sandbox import get_sandbox
-from .otx_tools import threat_check_ip, threat_check_domain, threat_check_hash, threat_pulse_search
 from .defender_tools import (
-    defender_quick_scan, defender_full_scan, defender_threat_list,
-    defender_status, defender_update_signatures,
-    nvd_cve_lookup, nvd_cve_search,
+    defender_full_scan,
+    defender_quick_scan,
+    defender_status,
+    defender_threat_list,
+    defender_update_signatures,
+    nvd_cve_lookup,
+    nvd_cve_search,
 )
-from .web_tools import web_search, web_fetch
-from .installer import install_skill, recommend_mcp_server, list_installed_skills
-from .self_audit import run_full_audit, run_quick_check, run_network_self_check, run_file_verification
-from .esp32_isolation import run_isolation_audit, FirewallRuleManager
 from .download_scanner import scan_download_handler, scan_file_handler
+from .esp32_isolation import FirewallRuleManager, run_isolation_audit
+from .installer import install_skill, list_installed_skills, recommend_mcp_server
+from .otx_tools import threat_check_domain, threat_check_hash, threat_check_ip, threat_pulse_search
+from .sandbox import get_sandbox
+from .self_audit import (
+    run_file_verification,
+    run_full_audit,
+    run_network_self_check,
+)
+from .web_tools import web_fetch, web_search
 
 logger = logging.getLogger("Guardian.Tools")
 
@@ -118,9 +126,9 @@ class ToolRegistry:
 def _import_guardian_modules():
     """Lazy import guardian modules from pc_agent."""
     sys.path.insert(0, str(Path(__file__).parent.parent / "pc_agent"))
+    from firewall_checker import FirewallChecker
     from network_monitor import NetworkMonitor
     from process_monitor import ProcessMonitor
-    from firewall_checker import FirewallChecker
     from security_monitor import SecurityMonitor
     return NetworkMonitor, ProcessMonitor, FirewallChecker, SecurityMonitor
 

@@ -6,10 +6,7 @@ Each test file handles its own ctypes mocking at module level.
 """
 from __future__ import annotations
 
-import json
 import pytest
-from unittest.mock import MagicMock, patch
-
 
 # ================================================================
 #  Config fixtures
@@ -52,7 +49,7 @@ def mock_config(mock_provider):
 @pytest.fixture
 def tool_registry():
     """A ToolRegistry pre-populated with test tools."""
-    from agent.tools import ToolRegistry, ToolDef
+    from agent.tools import ToolDef, ToolRegistry
 
     registry = ToolRegistry()
     registry.register(ToolDef(

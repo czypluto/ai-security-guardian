@@ -4,11 +4,11 @@
 from __future__ import annotations
 
 import json
-import pytest
-from unittest.mock import MagicMock, patch
 
 # tools.py imports ctypes at module level — must mock before import
 import sys
+from unittest.mock import MagicMock, patch
+
 _mock_ctypes = MagicMock()
 _mock_ctypes.windll = MagicMock()
 _mock_ctypes.windll.shell32 = MagicMock()
@@ -19,8 +19,12 @@ _mock_ctypes.Structure = type
 sys.modules["ctypes"] = _mock_ctypes
 
 # Now safe to import
-from agent.tools import ToolDef, ToolRegistry, create_tool_registry, _is_admin
-
+from agent.tools import (  # noqa: E402  需先 mock ctypes
+    ToolDef,
+    ToolRegistry,
+    _is_admin,
+    create_tool_registry,
+)
 
 # ================================================================
 #  ToolDef

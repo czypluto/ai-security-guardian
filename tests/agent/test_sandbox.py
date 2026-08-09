@@ -3,11 +3,10 @@
 """
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-
 # sandbox.py has module-level `import ctypes` — must mock before import
 import sys
+from unittest.mock import MagicMock, patch
+
 _mock_ctypes = MagicMock()
 _mock_ctypes.windll = MagicMock()
 _mock_ctypes.windll.kernel32 = MagicMock()
@@ -15,18 +14,16 @@ _mock_ctypes.wintypes = MagicMock()
 _mock_ctypes.Structure = type
 sys.modules["ctypes"] = _mock_ctypes
 
-from agent.sandbox import (
-    CommandValidator,
-    AuditLogger,
-    SandboxExecutor,
-    SAFE_COMMANDS,
+from agent.sandbox import (  # noqa: E402  需先 mock ctypes
     BLOCKED_PATTERNS,
-    SAFE_PREFIXES,
-    DEFAULT_MAX_TIME_SEC,
     DEFAULT_MAX_MEMORY_MB,
     DEFAULT_MAX_OUTPUT_BYTES,
+    DEFAULT_MAX_TIME_SEC,
+    SAFE_COMMANDS,
+    AuditLogger,
+    CommandValidator,
+    SandboxExecutor,
 )
-
 
 # ================================================================
 #  CommandValidator — 命令白名单/黑名单

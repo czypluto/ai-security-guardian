@@ -13,25 +13,23 @@
  5. 将状态推送到 ESP32 设备
 """
 
-import sys
-import os
-import time
-import signal
-import threading
-import logging
 import argparse
+import logging
+import signal
+import sys
+import threading
+import time
 from pathlib import Path
 
 import yaml
-
-from security_monitor import SecurityMonitor
-from network_monitor import NetworkMonitor
-from process_monitor import ProcessMonitor
-from firewall_checker import FirewallChecker
-from device_bridge import DeviceBridge
 from ai_status import AIStatusTracker
 from character_manager import CharacterManager
-from llm_client import MultiLLMClient, LLMConfig, Provider
+from device_bridge import DeviceBridge
+from firewall_checker import FirewallChecker
+from llm_client import MultiLLMClient, Provider
+from network_monitor import NetworkMonitor
+from process_monitor import ProcessMonitor
+from security_monitor import SecurityMonitor
 
 # agent/llm.py 集成
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -45,7 +43,7 @@ except ImportError:
     HAS_TRAY = False
 
 try:
-    from desktop_gui import run_gui, HAS_PYQT5
+    from desktop_gui import HAS_PYQT5, run_gui
     HAS_GUI = HAS_PYQT5
 except ImportError:
     HAS_GUI = False
@@ -303,7 +301,6 @@ class GuardianController:
                 # 2. 进程安全扫描
                 proc_result = self.process.scan()
                 suspicious_procs = proc_result.get('suspicious_count', 0)
-                high_cpu_procs = proc_result.get('high_cpu_count', 0)
 
                 if suspicious_procs > 0:
                     proc_names = proc_result.get('suspicious_names', [])
@@ -326,7 +323,6 @@ class GuardianController:
                 import psutil
                 cpu_percent = psutil.cpu_percent(interval=1)
                 mem_percent = psutil.virtual_memory().percent
-                cpu_warn = proc_result.get('cpu_percent', cpu_percent)
 
                 if cpu_percent > self.config.get('security', {}).get('process', {}).get('cpu_threshold', 80):
                     messages.append(f"CPU 使用率过高: {cpu_percent:.1f}%")

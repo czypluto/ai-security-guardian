@@ -17,10 +17,8 @@ import ctypes
 import logging
 import os
 import subprocess
-import threading
 import time
 import uuid
-from ctypes import wintypes
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional

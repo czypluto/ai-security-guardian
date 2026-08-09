@@ -8,24 +8,22 @@
 对外保持 MultiLLMClient 接口不变
 """
 
-import json
-import time
 import logging
+import sys
 import threading
-from typing import Optional, Dict, List, Generator
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-import sys
+from typing import Dict, Generator, List, Optional
 
 # 确保 agent/ 可导入
 _agent_root = Path(__file__).parent.parent
 if str(_agent_root) not in sys.path:
     sys.path.insert(0, str(_agent_root))
 
-from agent.config import LLMProvider, AgentConfig
-from agent.llm import LLMRouter
-
+from agent.config import LLMProvider  # noqa: E402  (依赖上方 sys.path 设置)
+from agent.llm import LLMRouter  # noqa: E402
 
 # ==================== 数据模型 (兼容旧接口) ====================
 

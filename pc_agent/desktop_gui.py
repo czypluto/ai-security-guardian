@@ -3,21 +3,42 @@ AI 网络安全管家 - 桌面 GUI 应用
 极简清爽风格 · 暗色主题 · 实时监控仪表盘 · 系统托盘后台运行
 """
 
-import sys
 import logging
+import sys
 from datetime import datetime
 
 try:
-    from PyQt5.QtWidgets import (
-        QApplication, QMainWindow, QWidget, QFrame, QLabel,
-        QVBoxLayout, QHBoxLayout, QGridLayout, QProgressBar,
-        QListWidget, QListWidgetItem, QSystemTrayIcon, QMenu,
-        QAction, QScrollArea, QSizePolicy, QSpacerItem, QPushButton,
-    )
-    from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, pyqtProperty, QPoint
+    from PyQt5.QtCore import QPoint, QPropertyAnimation, Qt, QTimer, pyqtProperty
     from PyQt5.QtGui import (
-        QIcon, QPixmap, QPainter, QColor, QPen, QBrush,
-        QFont, QPolygon, QFontDatabase
+        QBrush,
+        QColor,
+        QFont,
+        QFontDatabase,
+        QIcon,
+        QPainter,
+        QPen,
+        QPixmap,
+        QPolygon,
+    )
+    from PyQt5.QtWidgets import (
+        QAction,
+        QApplication,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QLabel,
+        QListWidget,
+        QListWidgetItem,
+        QMainWindow,
+        QMenu,
+        QProgressBar,
+        QPushButton,
+        QScrollArea,
+        QSizePolicy,
+        QSpacerItem,
+        QSystemTrayIcon,
+        QVBoxLayout,
+        QWidget,
     )
     HAS_PYQT5 = True
 except ImportError:

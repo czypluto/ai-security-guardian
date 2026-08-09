@@ -4,14 +4,15 @@
 模板: 40+20232501278+陈梓烨+小学期实训报告.docx
 """
 
+import os
+import tempfile
+
 from docx import Document
-from docx.shared import Pt, Inches, Cm, RGBColor, Emu, Twips
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-from docx.enum.section import WD_ORIENT
-from docx.oxml.ns import qn, nsdecls
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls, qn
+from docx.shared import Cm, Inches, Pt, RGBColor
 from PIL import Image, ImageDraw, ImageFont
-import copy, os, io, tempfile
 
 OUTPUT = r"C:\Users\24522\Desktop\AI网络安全管家_实训报告_陈梓烨.docx"
 PLACEHOLDER_DIR = os.path.join(tempfile.gettempdir(), 'report_placeholders')
@@ -306,7 +307,8 @@ fp = footer.paragraphs[0]
 fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 add_run(fp, '', '宋体', Pt(9))
 # Add page number
-from docx.oxml import OxmlElement
+from docx.oxml import OxmlElement  # noqa: E402
+
 fldChar1 = OxmlElement('w:fldChar')
 fldChar1.set(qn('w:fldCharType'), 'begin')
 instrText = OxmlElement('w:instrText')

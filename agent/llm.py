@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import json
-import time
 import logging
 import threading
-from typing import Optional, Generator
+import time
+from typing import Generator, Optional
 
 import requests
 
 from .config import LLMProvider
-
 
 logger = logging.getLogger("Guardian.LLM")
 

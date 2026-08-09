@@ -16,12 +16,11 @@ Security:
 """
 from __future__ import annotations
 
-import json
 import logging
-import urllib.request
-import urllib.parse
-import urllib.error
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 
 logger = logging.getLogger("Guardian.Web")
 
@@ -46,12 +45,6 @@ def web_search(query: str, max_results: int = 5) -> dict:
         r'<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>',
         html
     )
-    # Match: <span class="link-text">hostname</span> for snippet context
-    snippets = re.findall(
-        r'<td[^>]*class="result-snippet"[^>]*>(.*?)</td>',
-        html, re.DOTALL
-    )
-
     seen = set()
     for url_match, title in links[:max_results * 3]:
         title = title.strip()

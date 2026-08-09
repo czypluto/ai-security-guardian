@@ -8,8 +8,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Optional
 
 logger = logging.getLogger("Guardian.OTX")
@@ -174,4 +174,4 @@ def _summarize_pulses(pulses: list, n: int) -> list[dict]:
     return result
 
 
-import urllib.parse
+import urllib.parse  # noqa: E402

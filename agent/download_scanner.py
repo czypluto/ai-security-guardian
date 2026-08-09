@@ -270,7 +270,7 @@ def _scan_skill_specific(content: str, result: ScanResult):
                    f"Skills should be natural language instructions, not executable code.")
 
     # Check for excessively long lines (potential base64 or encoded payload)
-    long_lines = [l for l in content.split("\n") if len(l) > 500]
+    long_lines = [line for line in content.split("\n") if len(line) > 500]
     if long_lines:
         result.add("MEDIUM", "skill_long_lines",
                    f"{len(long_lines)} lines exceed 500 chars — possible encoded payload")

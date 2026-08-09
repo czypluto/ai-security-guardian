@@ -33,7 +33,6 @@ Usage in .claude/settings.json:
   }
 """
 import json
-import os
 import sys
 from pathlib import Path
 

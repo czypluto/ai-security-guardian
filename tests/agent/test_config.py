@@ -4,12 +4,10 @@
 from __future__ import annotations
 
 import os
-import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
+from unittest.mock import patch
 
-from agent.config import AgentConfig, LLMProvider, DEFAULT_SYSTEM_PROMPT
-
+from agent.config import DEFAULT_SYSTEM_PROMPT, AgentConfig, LLMProvider
 
 # ================================================================
 #  LLMProvider Dataclass

@@ -24,8 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent / "pc_agent"))
 
 from agent.config import AgentConfig
 from agent.core import AgentCore
-from agent.tools import create_tool_registry
 from agent.knowledge_base import get_knowledge_base
+from agent.tools import create_tool_registry
 
 
 def setup_logging():
@@ -245,7 +245,7 @@ def run_chat_mode(agent: AgentCore):
                     tool = agent.tools.get(tool_name)
                     if tool is None:
                         print(f"  Unknown tool: {tool_name}")
-                        print(f"  Use /tools to list available tools.")
+                        print("  Use /tools to list available tools.")
                         print()
                     else:
                         args = {}

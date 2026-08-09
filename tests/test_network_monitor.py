@@ -2,12 +2,9 @@
 测试 NetworkMonitor: 可疑端口/IP检测, 高频连接检测, 状态计算
 """
 
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-import psutil
+from unittest.mock import MagicMock, patch
 
 from network_monitor import NetworkMonitor
-
 
 # ---- Mock Helpers ----
 
@@ -118,7 +115,6 @@ class TestStatusCalculation:
         self.nm = NetworkMonitor({}, MagicMock())
 
     def test_no_threats_normal(self):
-        result = {'suspicious_ips': 0, 'suspicious_details': []}
         # Mock scan 结果
         assert self.nm.scan.__wrapped__ if hasattr(self.nm.scan, '__wrapped__') else True
 

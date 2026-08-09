@@ -3,10 +3,11 @@ Insert 12 diagram images into the training report at appropriate positions.
 Reads from original document, writes to a separate output file.
 """
 import os
+
 import docx
-from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
 
 DOC_PATH = r"C:\Users\24522\Desktop\AI网络安全管家_实训报告_陈梓烨.docx"
 IMG_DIR = r"C:\Users\24522\Desktop\图"

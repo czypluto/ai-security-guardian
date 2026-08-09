@@ -2,10 +2,11 @@
 pytest 共享 fixtures 和 Mock 工具
 """
 
-import sys
 import os
+import sys
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 # 将 pc_agent 加入 Python 路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'pc_agent'))

@@ -22,9 +22,9 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-import urllib.request
 import urllib.error
 import urllib.parse
+import urllib.request
 
 logger = logging.getLogger("Guardian.Defender")
 

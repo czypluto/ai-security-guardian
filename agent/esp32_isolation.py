@@ -22,13 +22,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("Guardian.ESP32Isolation")
 
@@ -420,7 +418,6 @@ class FirmwareIntegrityChecker:
     @staticmethod
     def verify_handshake(serial_data: str) -> dict:
         """Verify the ESP32 startup handshake looks legitimate."""
-        import re
         for pattern in FirmwareIntegrityChecker.EXPECTED_STARTUP_PATTERNS:
             if re.search(pattern, serial_data):
                 return {"ok": True, "matched_pattern": pattern}
@@ -543,7 +540,7 @@ if __name__ == "__main__":
         for f in report["findings"]:
             print(f"    {f}")
         if report["recommendations"]:
-            print(f"\n  Recommendations:")
+            print("\n  Recommendations:")
             for r in report["recommendations"]:
                 print(f"    > {r}")
         print("\n" + "=" * 60)

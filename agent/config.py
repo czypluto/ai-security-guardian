@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -79,8 +78,9 @@ class AgentConfig:
     @classmethod
     def from_config_file(cls, path: str) -> "AgentConfig":
         """Load from pc_agent/config.yaml."""
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         with open(path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)

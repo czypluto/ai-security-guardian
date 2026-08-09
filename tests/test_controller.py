@@ -2,10 +2,9 @@
 测试 GuardianController: 安全等级计算, 状态管理, 配置加载
 """
 
-import sys
 import os
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+import sys
+from unittest.mock import MagicMock, patch
 
 # 将 pc_agent 加入路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'pc_agent'))

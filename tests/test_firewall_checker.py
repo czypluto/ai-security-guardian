@@ -2,10 +2,9 @@
 测试 FirewallChecker: 超时处理, 多级降级, 缓存逻辑
 """
 
-import time
-import pytest
 import subprocess
-from unittest.mock import MagicMock, patch, PropertyMock
+import time
+from unittest.mock import MagicMock, patch
 
 from firewall_checker import FirewallChecker, _run_powershell
 

@@ -3,12 +3,12 @@ AI 状态追踪模块 —— 实时反映 AI 助手的工作状态
 可对接 Claude API、本地 LLM、或通过系统状态推断
 """
 
-import logging
-import time
-import os
 import json
-from typing import Dict
+import logging
+import os
+import time
 from pathlib import Path
+from typing import Dict
 
 
 class AIStatusTracker:
@@ -72,13 +72,6 @@ class AIStatusTracker:
         """检测正在运行的 AI 相关进程"""
         try:
             import psutil
-
-            ai_keywords = [
-                'claude', 'claude-cli', 'claude.exe',
-                'python', 'node',
-                'copilot', 'codex',
-                'cursor', 'windsurf',
-            ]
 
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent']):
                 try:

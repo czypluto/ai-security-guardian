@@ -3,8 +3,7 @@
 """
 
 import time
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, PropertyMock
 
 from character_manager import CharacterManager
 

@@ -16,11 +16,9 @@ _mock_ctypes.wintypes = MagicMock()
 _mock_ctypes.Structure = type
 sys.modules["ctypes"] = _mock_ctypes
 
-import pytest
-from agent.config import AgentConfig, LLMProvider
-from agent.core import AgentCore
-from agent.tools import ToolRegistry, ToolDef
-
+from agent.config import AgentConfig, LLMProvider  # noqa: E402  需先 mock ctypes
+from agent.core import AgentCore  # noqa: E402
+from agent.tools import ToolDef, ToolRegistry  # noqa: E402
 
 # ================================================================
 #  Helpers

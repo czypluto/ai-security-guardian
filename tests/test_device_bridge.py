@@ -3,11 +3,9 @@
 """
 
 import json
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock, mock_open
-import serial
+from unittest.mock import MagicMock, patch
 
-from device_bridge import DeviceBridge, list_serial_ports
+from device_bridge import DeviceBridge
 
 
 class TestJSONProtocol:

@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Generator, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator, Optional
 
-from .config import AgentConfig, DEFAULT_SYSTEM_PROMPT
+from .config import DEFAULT_SYSTEM_PROMPT, AgentConfig
 from .llm import LLMRouter
-from .tools import ToolRegistry, create_tool_registry, ToolDef
 from .mcp_client import MCPManager
-from .skill_loader import SkillManager, Skill
+from .skill_loader import Skill, SkillManager
+from .tools import ToolDef, ToolRegistry, create_tool_registry
 
 if TYPE_CHECKING:
     from .knowledge_base import KnowledgeBase

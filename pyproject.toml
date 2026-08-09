@@ -115,5 +115,8 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP"]
+# E/F/W: 语法/真 bug 类; I: 导入排序。
+# 注: 不启用 N(命名) —— 会对 ctypes/Windows API/Qt 方法名误报(如 JOBOBJECT_*、eventFilter);
+#     不启用 UP(现代化) —— 纯样式改动, 动 30+ 文件无功能收益。
+select = ["E", "F", "W", "I"]
 ignore = ["E501"]

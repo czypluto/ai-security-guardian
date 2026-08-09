@@ -11,23 +11,32 @@
   - 对话历史: 保持上下文连贯性
 """
 
-import sys
 import json
 import logging
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
 try:
-    from PyQt5.QtWidgets import (
-        QApplication, QDialog, QWidget, QFrame, QLabel,
-        QVBoxLayout, QHBoxLayout, QPushButton, QTextEdit,
-        QScrollArea, QMessageBox,
-    )
-    from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+    from PyQt5.QtCore import Qt, QThread, QTimer, pyqtSignal
     from PyQt5.QtGui import (
-        QFont, QColor,
+        QColor,
+        QFont,
+    )
+    from PyQt5.QtWidgets import (
+        QApplication,
+        QDialog,
+        QFrame,
+        QHBoxLayout,
+        QLabel,
+        QMessageBox,
+        QPushButton,
+        QScrollArea,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
     )
     HAS_PYQT5 = True
 except ImportError:
@@ -52,8 +61,8 @@ except ImportError:
     HAS_AGENT = False
 
 try:
-    from agent.llm import LLMRouter
-    from agent.config import LLMProvider
+    from agent.config import LLMProvider  # noqa: F401  用作可用性探测
+    from agent.llm import LLMRouter  # noqa: F401
     HAS_ROUTER = True
 except ImportError:
     HAS_ROUTER = False
@@ -1182,9 +1191,9 @@ class ChatWindow(QDialog):
 
         if router and router.available_count > 0:
             prompt = (
-                f"请调用安全工具获取实时数据，然后生成一份简洁的安全分析报告（100字以内）:\n"
-                f"先调用 scan_network + check_firewall + get_system_state，"
-                f"然后根据结果给出: 1)总体评价 2)主要风险 3)优先处理事项"
+                "请调用安全工具获取实时数据，然后生成一份简洁的安全分析报告（100字以内）:\n"
+                "先调用 scan_network + check_firewall + get_system_state，"
+                "然后根据结果给出: 1)总体评价 2)主要风险 3)优先处理事项"
             )
             messages = [
                 {"role": "system", "content": SECURITY_AGENT_PROMPT},

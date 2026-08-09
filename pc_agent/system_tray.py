@@ -4,7 +4,6 @@
 
 import logging
 import threading
-from pathlib import Path
 
 
 class SystemTrayApp:

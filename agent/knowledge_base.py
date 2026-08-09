@@ -20,14 +20,12 @@
 """
 from __future__ import annotations
 
-import os
-import re
 import json
-import hashlib
 import logging
-from pathlib import Path
+import re
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("Guardian.KB")
 
@@ -234,11 +232,11 @@ class ConversationStore:
             if role in ("user", "human"):
                 q_idx += 1
                 lines.append(f"## Q{q_idx}: {content[:80]}{'...' if len(content) > 80 else ''}")
-                lines.append(f"**User**:")
+                lines.append("**User**:")
                 lines.append(content)
                 lines.append("")
             elif role in ("ai", "assistant", "bot", "model"):
-                lines.append(f"**安小盾**:")
+                lines.append("**安小盾**:")
                 lines.append(content)
                 lines.append("")
             elif role == "system":
@@ -593,7 +591,6 @@ class KnowledgeBase:
             text = r["text"]
             meta = r.get("metadata", {})
             topics = meta.get("topics", "")
-            ts = meta.get("timestamp", "")
 
             header = f"### 参考 {i}"
             if topics:

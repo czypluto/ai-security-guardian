@@ -34,7 +34,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 logger = logging.getLogger("Guardian.SelfAudit")
 
@@ -451,7 +451,6 @@ class NetworkSelfCheck:
             import psutil
 
             our_pid = os.getpid()
-            our_name = Path(sys.executable).name
 
             suspicious_connections = []
             legitimate_connections = []
@@ -527,14 +526,24 @@ class SandboxTester:
     def _import_sandbox():
         """Import sandbox module — handles both package and standalone execution."""
         try:
-            from .sandbox import CommandValidator, BLOCKED_PATTERNS, create_job_object, close_job_handle
+            from .sandbox import (
+                BLOCKED_PATTERNS,
+                CommandValidator,
+                close_job_handle,
+                create_job_object,
+            )
         except ImportError:
             # Running standalone — add parent to path and import directly
             import sys
             _agent_dir = str(Path(__file__).parent)
             if _agent_dir not in sys.path:
                 sys.path.insert(0, _agent_dir)
-            from sandbox import CommandValidator, BLOCKED_PATTERNS, create_job_object, close_job_handle
+            from sandbox import (
+                BLOCKED_PATTERNS,
+                CommandValidator,
+                close_job_handle,
+                create_job_object,
+            )
         return CommandValidator, BLOCKED_PATTERNS, create_job_object, close_job_handle
 
     @staticmethod
