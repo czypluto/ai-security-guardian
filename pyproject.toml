@@ -68,11 +68,10 @@ optional = true
 chromadb = ">=0.4.0"
 sentence-transformers = ">=2.2.0"
 
-[tool.poetry.extras]
-tray = ["tray"]
-gui = ["gui"]
-kb = ["kb"]
-all = ["tray", "gui", "kb"]
+# Poetry 2.x: extras 必须引用具体包名，不能引用组名
+# 注: [tool.poetry.extras] 已移除 —— Poetry 2.x 下无法引用可选组依赖，
+# 且项目各处均通过 `poetry install --with/--without <组>` 或 pip 安装可选依赖。
+# 如需"pip install 包[tray]" 式安装，后续再迁移到 [project.optional-dependencies]。
 
 [tool.poetry.urls]
 Homepage = "https://github.com/czypluto/ai-security-guardian"
