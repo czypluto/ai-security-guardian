@@ -20,7 +20,7 @@ def _run_powershell(cmd: str, timeout: int = LONG_TIMEOUT) -> Optional[str]:
         result = subprocess.run(
             ['powershell', '-NoProfile', '-NonInteractive', '-Command', cmd],
             capture_output=True, text=True, timeout=timeout,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # Windows 专属常量, 非 Windows 用 0
             encoding="utf-8", errors="replace",
         )
         return result.stdout.strip() if result.returncode == 0 else None
@@ -75,7 +75,7 @@ class FirewallChecker:
             output = subprocess.run(
                 ['netsh', 'advfirewall', 'show', 'allprofiles', 'state'],
                 capture_output=True, text=True, timeout=SHORT_TIMEOUT,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # Windows 专属常量, 非 Windows 用 0
                 encoding="utf-8", errors="replace",
             )
             if output.returncode == 0:
@@ -104,7 +104,7 @@ class FirewallChecker:
             output = subprocess.run(
                 ['sc', 'query', 'mpssvc'],
                 capture_output=True, text=True, timeout=SHORT_TIMEOUT,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # Windows 专属常量, 非 Windows 用 0
                 encoding="utf-8", errors="replace",
             )
             if 'RUNNING' in output.stdout:
@@ -150,7 +150,7 @@ class FirewallChecker:
             output = subprocess.run(
                 ['sc', 'query', 'WinDefend'],
                 capture_output=True, text=True, timeout=SHORT_TIMEOUT,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # Windows 专属常量, 非 Windows 用 0
                 encoding="utf-8", errors="replace",
             )
             if 'RUNNING' in output.stdout:

@@ -297,10 +297,7 @@ class TestIsAdmin:
 
     def test_is_admin_handles_missing_ctypes(self):
         """当 ctypes 不可用时应该返回 False (安全默认)."""
-        # is_admin should not crash and return a bool
-        # On Windows it queries the real API; on Linux it's mocked
-        result = _is_admin()
-        assert isinstance(result, bool)
-        # When mocked (non-Windows), it should return False (safe default)
-        if sys.platform != "win32":
-            assert result is False
+        # 从 sys.modules 移除 ctypes → import ctypes 抛 ImportError → 走 except 返回 False
+        with patch.dict(sys.modules, {"ctypes": None}):
+            result = _is_admin()
+        assert result is False
