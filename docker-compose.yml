@@ -1,0 +1,86 @@
+# ============================================================
+# AI Security Guardian — Docker Compose (本地开发环境)
+# ============================================================
+#
+# 用法:
+#   docker-compose up -d        # 后台启动 CLI Agent
+#   docker-compose run test     # 运行测试套件
+#   docker-compose down         # 停止并清理
+# ============================================================
+
+version: "3.9"
+
+services:
+
+  # ── CLI Agent (生产模式) ──────────────────────────────
+  guardian:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-security-guardian:latest
+    container_name: guardian
+    stdin_open: true    # 交互式 shell
+    tty: true
+    volumes:
+      # 源码挂载 (开发时热更新，生产可注释掉)
+      - ./agent:/app/agent:ro
+      - ./skills:/app/skills:ro
+      # 持久数据
+      - guardian_data:/app/data
+      - guardian_logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - GUARDIAN_LOG_LEVEL=INFO
+    command: ["--chat"]
+    restart: unless-stopped
+    networks:
+      - guardian-net
+
+  # ── 测试服务 ─────────────────────────────────────────
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-security-guardian:latest
+    container_name: guardian-test
+    volumes:
+      - ./tests:/app/tests:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./pytest.ini:/app/pytest.ini:ro
+    env_file:
+      - .env
+    environment:
+      - CI=true
+    entrypoint: ["pytest"]
+    command:
+      [
+        "-v",
+        "--tb=short",
+        "--cov=agent",
+        "--cov=pc_agent",
+        "--cov-report=term-missing",
+        "--timeout=30",
+      ]
+    profiles:
+      - test
+
+  # ── Lint 服务 ────────────────────────────────────────
+  lint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-security-guardian:latest
+    container_name: guardian-lint
+    entrypoint: ["ruff"]
+    command: ["check", ".", "--config", "/app/pyproject.toml"]
+    profiles:
+      - lint
+
+volumes:
+  guardian_data:
+  guardian_logs:
+
+networks:
+  guardian-net:
+    driver: bridge

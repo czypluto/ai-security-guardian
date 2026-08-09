@@ -39,10 +39,6 @@
 
 极简暗色主题桌面应用，实时安全概览 + AI 对话窗口。
 
-### Web Dashboard
-
-浏览器访问 `http://127.0.0.1:5000`，深色实时安全面板。
-
 ### CLI Agent
 
 ```bash
@@ -79,14 +75,14 @@ $ python agent_cli.py "全面扫描我的网络安全"
 │  │                    ▼             ▼                      │  │
 │  │              GuardianController                         │  │
 │  │           (状态管理 + 安全等级计算)                       │  │
-│  │     │           │            │            │             │  │
-│  │     ▼           ▼            ▼            ▼             │  │
-│  │  Device    Character      LLM          Web             │  │
-│  │  Bridge    Manager        Client       Dashboard       │  │
-│  │  (Serial   (安小盾角色     (DeepSeek/   (Flask          │  │
-│  │   /WiFi)   表情+台词)      智谱/硅基)    :5000)          │  │
-│  │     │                                         │        │  │
-│  └─────┼─────────────────────────────────────────┘        │  │
+│  │     │           │            │                          │  │
+│  │     ▼           ▼            ▼                          │  │
+│  │  Device    Character      LLM                          │  │
+│  │  Bridge    Manager        Client                       │  │
+│  │  (Serial   (安小盾角色     (DeepSeek/                    │  │
+│  │   /WiFi)   表情+台词)      智谱/硅基)                     │  │
+│  │     │                                                  │  │
+│  └─────┼───────────────────────────────                    │  │
 │        │ USB Serial                                        │  │
 │        ▼                                                   │  │
 │  ┌──────────────────────────┐                              │  │
@@ -119,6 +115,8 @@ $ python agent_cli.py "全面扫描我的网络安全"
 └──────────────────────────────────────────────────────────────┘
 ```
 
+![系统整体架构图](images/01_系统整体架构图.drawio.png)
+
 ---
 
 ## 🎯 核心功能
@@ -130,12 +128,18 @@ $ python agent_cli.py "全面扫描我的网络安全"
 - ✅ **安全事件** — Windows EventLog 分析 (18 种可疑 EventID)
 - ✅ **Defender 状态** — 实时杀毒状态 + 快速/全盘扫描
 
+![系统主流业务流程图](images/02_系统主流业务流程图.drawio.png)
+
+![防火墙多级降级策略流程图](images/10_防火墙多级降级策略流程图.drawio.png)
+
 ### 🤖 AI Agent (ReAct 智能大脑)
 - ✅ **ReAct 循环** — Think → Act → Observe，最多 10 轮迭代
-- ✅ **多模型支持** — DeepSeek / 智谱 AI / 硅基流动，自动故障转移
+- ✅ **多模型支持** — DeepSeek / 智谱 AI ，自动故障转移
 - ✅ **30+ 内置工具** — 安全扫描、威胁情报、CVE 查询、命令沙箱、自审计、ESP32 隔离、下载扫描
 - ✅ **流式输出** — CLI 模式下 LLM 回复逐字显示
 - ✅ **CLI 对话模式** — `/tools` `/save` `/kb` `/run` 等斜杠命令
+
+![ReAct核心循环流程图](images/04_ReAct核心循环流程图.drawio.png)
 
 ### 🌐 威胁情报
 - ✅ **AlienVault OTX** — IP/域名/文件哈希信誉查询 (免费 API，5 分钟缓存)
@@ -144,10 +148,9 @@ $ python agent_cli.py "全面扫描我的网络安全"
 
 ### 📟 ESP32 硬件终端
 - ✅ **双屏设计** — 表情屏 (颜文字角色) + 仪表盘 (安全数据)，按键/指令切换
-- ✅ **角色引擎** — "安小盾" 二次元角色，8 种表情 + 60+ 句台词
-- ✅ **告警系统** — 威胁时 OLED 双线边框 + RGB LED 红灯 + 蜂鸣器
-- ✅ **双通信** — USB Serial (自动检测 COM 口) + WiFi TCP
-- ✅ **双硬件** — 0.96" OLED (SSD1306) + TTGO T-Display (TFT 彩屏)
+- ✅ **角色引擎** — "安小盾" 二次元角色
+- ✅ **通信** — USB Serial (自动检测 COM 口)
+- ✅ **硬件** — TTGO T-Display (TFT 彩屏)
 
 ### 🔌 MCP 协议 (Model Context Protocol)
 - ✅ **MCP Client** — 连接外部 MCP Server，自动发现工具 (stdio + HTTP)
@@ -161,13 +164,19 @@ $ python agent_cli.py "全面扫描我的网络安全"
 - ✅ **用户自定义** — `skills/user/` 目录支持个人技能
 
 ### 🧠 知识库系统
-- ✅ **ChromaDB 向量存储** — 对话自动保存，语义检索历史上下文
+- ✅ **ChromaDB 向量存储** — 对话手动保存，语义检索历史上下文
 - ✅ **双模 Embedding** — MiniLM 生产模式 + TF-IDF 零依赖后备
 - ✅ **越用越聪明** — 每次对话自动积累，检索结果注入新对话
+
+![知识库RAG流程图](images/11_知识库RAG流程图.drawio.png)
+
+![知识库ER图](images/12_知识库ER图.drawio.png)
 
 ### 🔒 安全沙箱
 - ✅ **6 层隔离** — 命令白名单 (19+) → Job Object → Restricted Token → 资源限制 → 文件守卫 → 审计日志
 - ✅ **fail-closed** — 任一层失败，默认拒绝执行
+
+![安全沙箱6层防护架构图](images/05_安全沙箱6层防护架构图.drawio.png)
 
 ### 🛡️ 运行时自审计 (v3.3 新增)
 - ✅ **启动自检** — 每次启动自动验证代码完整性，被篡改立即告警
@@ -252,12 +261,22 @@ pip install chromadb sentence-transformers
 
 ### 4. 配置 LLM API Key
 
-编辑 `pc_agent/config.yaml` 或设置环境变量：
+编辑 `agent/config.yaml` 读取env，永远不直接将api key直接暴露在程序当中：
 
 ```bash
 # 推荐: DeepSeek
-set DEEPSEEK_API_KEY=sk-your-key
-
+        ds = llm_cfg.get("deepseek", {})
+        ds_key = cls._resolve_env(ds.get("api_key", ""))
+        if ds.get("enabled") and ds_key.startswith("sk-"):
+            providers.append(LLMProvider(
+                name="deepseek",
+                api_key=ds_key,
+                base_url="https://api.deepseek.com/v1",
+                model=ds.get("model", "deepseek-chat"),
+                max_tokens=1024,
+                temperature=0.7,
+                priority=0,
+            ))
 
 ```
 
@@ -316,14 +335,12 @@ ai-security-guardian/
 │   ├── main.py                        #   主入口 GuardianController
 │   ├── config.yaml                    #   全局配置
 │   ├── requirements.txt               #   Python 依赖
-│   ├── device_bridge.py               #   设备通信 (Serial/WiFi)
+│   ├── device_bridge.py               #   设备通信 (Serial)
 │   ├── security_monitor.py            #   安全事件监控 (EventLog)
 │   ├── network_monitor.py             #   网络威胁检测
 │   ├── process_monitor.py             #   可疑进程检测
 │   ├── firewall_checker.py            #   防火墙/Defender 检查
-│   ├── character_manager.py           #   角色表情+台词管理
 │   ├── llm_client.py                  #   多模型 LLM 客户端
-│   ├── web_dashboard.py               #   Flask Web 仪表盘
 │   ├── desktop_gui.py                 #   PyQt5 桌面 GUI
 │   ├── chat_window.py                 #   AI 对话窗口
 │   ├── system_tray.py                 #   系统托盘
@@ -393,6 +410,14 @@ ai-security-guardian/
     └── system_prompt.md
 ```
 
+![系统功能模块图](images/03_系统功能模块图.drawio.png)
+
+![系统数据流图](images/07_系统数据流图_DFD.drawio.png)
+
+![系统部署图](images/08_系统部署图.drawio.png)
+
+![系统整体ER图](images/14_系统整体ER图.drawio.png)
+
 ---
 
 ## 🔌 通信协议
@@ -426,6 +451,8 @@ PC Agent 与 ESP32 通过 JSON over Serial (115200bps) 通信：
 {"cmd": "say", "text": "主人! 防火墙怎么关了!"}
 {"cmd": "screen", "screen": 1}
 ```
+
+![PC与ESP32通信时序图](images/06_PC与ESP32通信时序图.drawio.png)
 
 ---
 
@@ -481,7 +508,6 @@ knowledge_base:
 | **系统监控** | psutil, pywin32, WMI | 进程/网络/事件日志 |
 | **LLM** | OpenAI-compatible API | DeepSeek / 智谱 / 硅基流动 |
 | **桌面 GUI** | PyQt5 + QSS | 暗色极简主题 |
-| **Web 仪表盘** | Flask + 原生 JS | 实时面板 |
 | **系统托盘** | pystray + Pillow | 后台运行 |
 | **向量数据库** | ChromaDB | 对话语义检索 |
 | **Embedding** | sentence-transformers (MiniLM) / TF-IDF 后备 | 双模 |
@@ -492,7 +518,6 @@ knowledge_base:
 | **自审计** | SHA256 哈希 + 依赖扫描 + 代码注入检测 | 启动时自动运行 |
 | **网络隔离** | 串口白名单 + 防火墙 C2 封锁 + 外泄防护 | ESP32 零网络暴露 |
 | **前置扫描** | Regex 模式库 + Unicode 隐藏检测 + Typo 检测 | 安装前自动拦截 |
-| **Claude Code** | PreToolUse Hook | Write/Bash 操作自动安检 |
 | **测试** | pytest + unittest.mock | 单元测试 |
 
 ---
@@ -533,6 +558,8 @@ python -m agent.mcp_server_mode
   }
 }
 ```
+
+![MCP协议交互时序图](images/09_MCP协议交互时序图.drawio.png)
 
 ---
 
@@ -601,6 +628,8 @@ pytest tests/ -v
 └─────────────────────────────────────────────┘
 ```
 
+![纵深防御体系图](images/13_纵深防御体系图.drawio.png)
+
 ---
 
 ## 🗺️ 路线图
@@ -630,7 +659,7 @@ MIT License — 自由使用、修改、分发
 - AlienVault OTX 免费威胁情报
 - NIST NVD 免费漏洞数据库
 - PyQt5 桌面框架
-- 智谱 AI、DeepSeek、硅基流动
+- 智谱 AI、DeepSeek
 
 ---
 

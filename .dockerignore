@@ -1,0 +1,77 @@
+# ── Python ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ── 虚拟环境 ─────────────────────────────────────────
+venv/
+.venv/
+env/
+.venv/
+
+# ── Git & IDE ────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── 敏感文件 ─────────────────────────────────────────
+.env
+.env.local
+pc_agent/config.yaml
+
+# ── 日志 ────────────────────────────────────────────
+*.log
+logs/
+
+# ── 临时 / 上传 ──────────────────────────────────────
+.uploads/
+*.tmp
+*.temp
+
+# ── ESP32 固件 ───────────────────────────────────────
+firmware/build/
+firmware/*.bin
+firmware/*.elf
+
+# ── 知识库 (向量数据库 + 对话记录) ─────────────────
+knowledge_base/
+
+# ── 文档 & 图表 ─────────────────────────────────────
+edge/
+images/
+*.drawio
+*.drawio.bkp
+*.drawio.bkp
+PROJECT_FULL_STORY.md
+
+# ── 自审计产物 ──────────────────────────────────────
+integrity_manifest.json
+firewall_isolation.ps1
+
+# ── 测试缓存 ────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# ── Docker 自身 ──────────────────────────────────────
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# ── OS 文件 ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,9 +1,9 @@
 <mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
   <diagram name="知识库ER图" id="er">
-    <mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="700" math="0" shadow="0">
+    <mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="850" math="0" shadow="0">
       <root>
         <mxCell id="0" /><mxCell id="1" parent="0" />
-        <mxCell id="title" value="AI网络安全管家 — 知识库 ER 图 (实体关系模型)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+        <mxCell id="title" value="AI网络安全管家 v3.3 — 知识库与防御 ER 图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
           <mxGeometry x="200" y="5" width="600" height="35" as="geometry" />
         </mxCell>
 
@@ -95,9 +95,56 @@
           <mxGeometry x="385" y="425" width="240" height="140" as="geometry" />
         </mxCell>
 
-        <!-- Note: not traditional RDBMS -->
-        <mxCell id="note_er" value="📌 说明: 本系统以实时监控为主，不涉及传统关系型数据库。ChromaDB 为向量数据库 (NoSQL)，配置/日志/技能为文件存储 (YAML/Markdown/JSON Lines)。上图展示的是各实体的逻辑数据模型而非物理数据库表结构。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=10;fontColor=#333;align=left;spacingLeft=5;" vertex="1" parent="1">
-          <mxGeometry x="40" y="610" width="930" height="45" as="geometry" />
+        <!-- v3.3 Entity: SelfAuditReport -->
+        <mxCell id="e_selfaudit" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="590" width="250" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="e_selfaudit_t" value="SelfAuditReport [v3.3] (自审计报告)" style="text;html=1;strokeColor=none;fillColor=#c62828;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="590" width="280" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="e_selfaudit_a" value="PK  audit_id: UUID\n    timestamp: datetime\n    overall_score: int (0-100)\n    checks: JSON (7层验证结果)\n    critical_failures: list[str]\n    duration_ms: float" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="45" y="625" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e_selfaudit_m" value="+ run_full_audit()\n+ quick_check() → bool\n+ verify_files() → dict" style="text;html=1;strokeColor=none;fillColor=#ffcdd2;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="45" y="710" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- v3.3 Entity: DownloadScanResult -->
+        <mxCell id="e_dlscan" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="350" y="590" width="250" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dlscan_t" value="DownloadScanResult [v3.3] (下载扫描)" style="text;html=1;strokeColor=none;fillColor=#c62828;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="590" width="280" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dlscan_a" value="PK  scan_id: UUID\n    file_path: str\n    file_hash: str (SHA256)\n    file_type: skill|mcp|script|binary\n    score: int (0-100)\n    safe: bool\n    findings: JSON (检测详情)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="355" y="625" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dlscan_m" value="+ scan_before_install()\n+ quick_scan_skill() → bool\n+ check_typosquatting()" style="text;html=1;strokeColor=none;fillColor=#ffcdd2;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="355" y="710" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- v3.3 Entity: IsolationState -->
+        <mxCell id="e_isost" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="660" y="590" width="250" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="e_isost_t" value="IsolationState [v3.3] (ESP32隔离)" style="text;html=1;strokeColor=none;fillColor=#c62828;fontColor=#fff;fontSize=14;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="590" width="280" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="e_isost_a" value="PK  state_id: UUID\n    mode: strict|relaxed|disabled\n    cmd_count: int\n    invalid_count: int\n    locked_down: bool\n    egress_attempts_blocked: int\n    firewall_rules_installed: bool" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="665" y="625" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e_isost_m" value="+ run_isolation_audit()\n+ verify_firmware() → dict\n+ generate_firewall_script()" style="text;html=1;strokeColor=none;fillColor=#ffcdd2;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="665" y="710" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Cross-entity relationships for v3.3 -->
+        <mxCell id="rel_skill_dlscan" value="scans" style="endArrow=classic;html=1;strokeColor=#c62828;strokeWidth=2;fontSize=9;fontColor=#c62828;dashed=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="165" y="570" as="sourcePoint" /><mxPoint x="350" y="600" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <!-- Note -->
+        <mxCell id="note_er" value="说明: 本系统以实时监控为主。ChromaDB为向量数据库(NoSQL)，配置/日志/技能为文件存储(YAML/Markdown/JSON Lines)。红虚线框为v3.3新增实体。上图为逻辑数据模型，非物理数据库表。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontSize=10;fontColor=#333;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="40" y="775" width="900" height="40" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

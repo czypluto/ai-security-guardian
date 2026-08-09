@@ -1,0 +1,202 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.7.17 Chrome/128.0.6613.36 Electron/32.0.1 Safari/537.36" version="24.7.17">
+  <diagram name="系统整体ER图" id="overall-er">
+    <mxGraphModel dx="1823" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="AI网络安全管家 v3.3 — 系统整体 ER 图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" parent="1" vertex="1">
+          <mxGeometry x="300" y="5" width="600" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=1;dashed=1;opacity=40;" parent="1" vertex="1">
+          <mxGeometry x="30" y="55" width="360" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_label_tmp" value="安全监控子系统" style="text;html=1;strokeColor=none;fillColor=#1565c0;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="30" y="55" width="120" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="e_secevt" value="SecurityEvent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="50" y="90" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_secevt_a" value="PK event_id&#xa;event_type, severity&#xa;source, timestamp&#xa;details (JSON)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="55" y="122" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conn" value="SuspiciousConnection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="50" y="190" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conn_a" value="PK conn_id&#xa;remote_ip, remote_port&#xa;local_port, pid&#xa;status, threat_level" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="55" y="222" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fwst" value="FirewallStatus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="220" y="90" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fwst_a" value="PK check_id&#xa;firewall_on, defender_on&#xa;check_method (L1/L2/L3)&#xa;timestamp, cached" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="225" y="122" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_snap" value="SystemSnapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="220" y="190" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_snap_a" value="PK snapshot_id&#xa;cpu%, mem%, disk%&#xa;active_conns, uptime&#xa;sec_level (safe/warn/danger)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="225" y="222" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff9800;strokeWidth=1;dashed=1;opacity=40;" parent="1" vertex="1">
+          <mxGeometry x="410" y="55" width="360" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_label_tmp" value="AI Agent 子系统" style="text;html=1;strokeColor=none;fillColor=#ff9800;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="410" y="55" width="120" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conv" value="Conversation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="430" y="90" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_conv_a" value="PK conversation_id&#xa;created_at, title&#xa;message_count&#xa;model_used, tags" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="435" y="122" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_msg" value="Message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="620" y="90" width="130" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_msg_a" value="PK message_id&#xa;FK conversation_id&#xa;role, content&#xa;timestamp, tool_calls" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="625" y="122" width="135" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_tool" value="ToolCall" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="620" y="190" width="130" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_tool_a" value="PK call_id&#xa;FK message_id&#xa;tool_name, arguments&#xa;result, duration_ms" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="625" y="222" width="135" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skill" value="Skill" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="430" y="190" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_skill_a" value="PK skill_name&#xa;file_path, description&#xa;triggers[], enabled&#xa;category, loaded_at" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="435" y="222" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_token" value="TokenUsage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ff9800;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="430" y="290" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_token_a" value="PK usage_id&#xa;FK conversation_id&#xa;prompt_tokens, completion_tokens&#xa;model, cost, timestamp" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="445" y="305" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_conv_msg" value="1:N" style="endArrow=classic;html=1;strokeColor=#ff9800;strokeWidth=2;fontSize=9;fontColor=#ff9800;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="580" y="105" as="sourcePoint" />
+            <mxPoint x="620" y="105" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rel_msg_tool" value="1:N" style="endArrow=classic;html=1;strokeColor=#ff9800;strokeWidth=2;fontSize=9;fontColor=#ff9800;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="685" y="175" as="sourcePoint" />
+            <mxPoint x="685" y="190" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rel_snap_secevt" value="1:N" style="endArrow=classic;html=1;strokeColor=#1565c0;strokeWidth=2;fontSize=9;fontColor=#1565c0;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="295" y="115" as="sourcePoint" />
+            <mxPoint x="200" y="115" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=1;dashed=1;opacity=40;" parent="1" vertex="1">
+          <mxGeometry x="30" y="355" width="360" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_label_tmp" value="知识库子系统" style="text;html=1;strokeColor=none;fillColor=#2e7d32;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="30" y="355" width="120" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vdoc" value="VectorDocument" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#2e7d32;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="50" y="390" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_vdoc_a" value="PK vector_id&#xa;FK message_id&#xa;document (text)&#xa;embedding (float[384|768])&#xa;metadata (JSON), collection" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="55" y="422" width="150" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="e_kbe" value="KnowledgeEntry" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#2e7d32;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="220" y="390" width="150" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_kbe_a" value="PK entry_id&#xa;FK vector_id&#xa;source_type (conv/audit/scan)&#xa;tags[], confidence&#xa;created_at, last_accessed" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="225" y="422" width="150" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#c62828;strokeWidth=2;dashed=1;opacity=40;" parent="1" vertex="1">
+          <mxGeometry x="400" y="355" width="750" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_label_tmp" value="v3.3 纵深防御子系统" style="text;html=1;strokeColor=none;fillColor=#c62828;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="410" y="355" width="150" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="e_audit" value="SelfAuditReport" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="430" y="390" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_audit_a" value="PK audit_id&#xa;timestamp, overall_score&#xa;checks (JSON: 7 layers)&#xa;critical_failures[]&#xa;duration_ms" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="435" y="422" width="150" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dlscan" value="DownloadScanResult" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="610" y="390" width="170" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dlscan_a" value="PK scan_id&#xa;file_path, file_hash (SHA256)&#xa;file_type, source&#xa;score (0-100), safe (bool)&#xa;findings[] (JSON)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="615" y="422" width="155" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fwr" value="FirewallRule" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="430" y="500" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fwr_a" value="PK rule_id&#xa;rule_name, direction&#xa;action (allow/block)&#xa;protocol, remote_ports[]&#xa;enabled, created_at" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="435" y="532" width="150" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="e_isost" value="IsolationState" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="610" y="500" width="170" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_isost_a" value="PK state_id&#xa;mode (strict/relaxed)&#xa;fw_version, fingerprint&#xa;cmd_count, locked_down&#xa;egress_attempts_blocked" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="615" y="532" width="160" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="e_sbaudit" value="SandboxAudit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="520" y="594" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e_sbaudit_a" value="PK execution_id&#xa;timestamp, command&#xa;allowed, reason&#xa;exit_code, duration_ms&#xa;pid, output_size" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" parent="1" vertex="1">
+          <mxGeometry x="525" y="624" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_msg_vdoc" value="1:1" style="endArrow=classic;html=1;strokeColor=#2e7d32;strokeWidth=2;fontSize=9;fontColor=#2e7d32;dashed=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="685" y="120" as="sourcePoint" />
+            <mxPoint x="200" y="405" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rel_conv_kbe" value="1:N" style="endArrow=classic;html=1;strokeColor=#2e7d32;strokeWidth=2;fontSize=9;fontColor=#2e7d32;dashed=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="505" y="175" as="sourcePoint" />
+            <mxPoint x="295" y="405" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rel_snap_audit" value="triggers" style="endArrow=classic;html=1;strokeColor=#c62828;strokeWidth=2;fontSize=9;fontColor=#c62828;dashed=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="295" y="220" as="sourcePoint" />
+            <mxPoint x="430" y="405" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rel_dlscan_skill" value="scans" style="endArrow=classic;html=1;strokeColor=#c62828;strokeWidth=2;fontSize=9;fontColor=#c62828;dashed=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="505" y="220" as="sourcePoint" />
+            <mxPoint x="610" y="405" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rel_fwr_sbaudit" value="blocks" style="endArrow=classic;html=1;strokeColor=#c62828;strokeWidth=2;fontSize=9;fontColor=#c62828;dashed=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="530" y="532" as="sourcePoint" />
+            <mxPoint x="560" y="585" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#bdbdbd;" parent="1" vertex="1">
+          <mxGeometry x="30" y="570" width="360" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_title" value="图例" style="text;html=1;strokeColor=none;fillColor=#757575;fontColor=#fff;fontSize=10;fontStyle=1;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="30" y="570" width="50" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="— 实线 = 子系统内关系" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;fontColor=#333;" parent="1" vertex="1">
+          <mxGeometry x="45" y="595" width="160" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="- - 虚线 = 跨子系统关系" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;fontColor=#333;" parent="1" vertex="1">
+          <mxGeometry x="45" y="613" width="160" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="PK = 主键  FK = 外键" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;fontColor=#333;" parent="1" vertex="1">
+          <mxGeometry x="45" y="631" width="200" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="v3.3 新增实体: 红框" style="text;html=1;strokeColor=none;fillColor=#ffcdd2;fontSize=10;align=left;fontColor=#c62828;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="210" y="595" width="160" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5" value="4个子系统 · 14个实体 · 7条关系" style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;align=left;fontColor=#666;" parent="1" vertex="1">
+          <mxGeometry x="210" y="615" width="170" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

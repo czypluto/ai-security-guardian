@@ -43,6 +43,8 @@ colorlog = ">=6.7.0"
 pytest = ">=7.0.0"
 pytest-mock = ">=3.10.0"
 pytest-timeout = ">=2.0.0"
+pytest-cov = ">=4.0.0"
+ruff = ">=0.6.0"
 
 # ── 可选依赖组 ──────────────────────────────────────────────
 
@@ -88,6 +90,25 @@ python_files = "test_*.py"
 python_functions = "test_*"
 addopts = "-v --tb=short"
 timeout = 30
+
+# ── Coverage ──────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["agent", "pc_agent"]
+omit = [
+    "tests/*",
+    "**/__pycache__/*",
+    "**/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
 
 # ── Ruff / Linter (可选，便于后续接入) ─────────────────────────
 [tool.ruff]

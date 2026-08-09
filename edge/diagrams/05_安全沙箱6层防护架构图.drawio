@@ -1,9 +1,9 @@
 <mxfile host="app.diagrams.net" modified="2026-07-28T00:00:00.000Z" agent="draw.io" version="24.0.0">
   <diagram name="安全沙箱6层防护架构图" id="sandbox">
-    <mxGraphModel dx="900" dy="750" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="750" math="0" shadow="0">
+    <mxGraphModel dx="900" dy="750" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="800" math="0" shadow="0">
       <root>
         <mxCell id="0" /><mxCell id="1" parent="0" />
-        <mxCell id="title" value="AI网络安全管家 — 安全沙箱 6 层防护架构图" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+        <mxCell id="title" value="AI网络安全管家 v3.3 — 安全沙箱 6 层 (纵深防御第3道防线)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
           <mxGeometry x="150" y="8" width="600" height="35" as="geometry" />
         </mxCell>
 
@@ -107,7 +107,10 @@
         <mxCell id="arl4" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="800" y="340" as="sourcePoint" /><mxPoint x="800" y="350" as="targetPoint" /></mxGeometry></mxCell>
         <mxCell id="arl3" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="790" y="435" as="sourcePoint" /><mxPoint x="790" y="445" as="targetPoint" /></mxGeometry></mxCell>
         <mxCell id="arl2" style="endArrow=classic;html=1;strokeColor=#666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="780" y="530" as="sourcePoint" /><mxPoint x="780" y="540" as="targetPoint" /></mxGeometry></mxCell>
-      </root>
+              <mxCell id="outer_note" value="此图为纵深防御体系第3道防线 (命令执行沙箱)。外层: 防线0=下载前置扫描 | 防线1=启动自审计 | 防线2=ESP32网络隔离 — 详见 13_纵深防御体系图" style="text;html=1;strokeColor=#ef5350;fillColor=#ffebee;align=center;fontSize=10;fontColor=#c62828;rounded=1;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="60" y="690" width="780" height="30" as="geometry" />
+        </mxCell>
+    </root>
     </mxGraphModel>
   </diagram>
 </mxfile>

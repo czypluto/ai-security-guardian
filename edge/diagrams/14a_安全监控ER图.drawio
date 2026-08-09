@@ -1,0 +1,118 @@
+<mxfile host="app.diagrams.net" modified="2026-07-30T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="安全监控ER图" id="security-er">
+    <mxGraphModel dx="1000" dy="750" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="650" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="AI网络安全管家 — 安全监控子系统 ER 图 (局部)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=16;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="200" y="5" width="600" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- GuardianController -->
+        <mxCell id="e_ctrl" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="350" y="60" width="220" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctrl_t" value="GuardianController (主控制器)" style="text;html=1;strokeColor=none;fillColor=#1565c0;fontColor=#fff;fontSize=13;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="60" width="220" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctrl_a" value="PK: state_id&#xa;scan_interval: int&#xa;sec_level: safe|warning|danger&#xa;threat_count: int&#xa;last_threat: str&#xa;uptime: int" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="355" y="95" width="210" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctrl_m" value="+ start_monitors()\n+ _scan_loop()\n+ _calculate_security_level()\n+ _push_state()" style="text;html=1;strokeColor=none;fillColor=#bbdefb;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="355" y="168" width="210" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- SecurityEvent -->
+        <mxCell id="e_se" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="280" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="e_se_t" value="SecurityEvent (安全事件)" style="text;html=1;strokeColor=none;fillColor=#2e7d32;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="280" width="200" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="e_se_a" value="PK: event_id&#xa;event_type: str&#xa;  (login_fail/priv_change/&#xa;   new_user/service_change)&#xa;severity: low|med|high|crit&#xa;source: EventLog/psutil/WMI&#xa;EventID: int (windows)&#xa;timestamp: datetime&#xa;details: JSON" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="45" y="310" width="190" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="e_se_m" value="+ collect_events()\n+ get_summary()\n+ filter_by_severity()" style="text;html=1;strokeColor=none;fillColor=#c8e6c9;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="45" y="420" width="190" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- SuspiciousConnection -->
+        <mxCell id="e_sc" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ff9800;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="290" y="280" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="e_sc_t" value="SuspiciousConnection" style="text;html=1;strokeColor=none;fillColor=#ff9800;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="290" y="280" width="200" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="e_sc_a" value="PK: conn_id&#xa;remote_ip: str&#xa;remote_port: int&#xa;local_port: int&#xa;pid: int&#xa;process_name: str&#xa;status: ESTABLISHED|LISTEN&#xa;threat_level: normal|suspicious|C2&#xa;matched_port: int (malware port)&#xa;frequency: int (conns/scan)" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="295" y="310" width="190" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="e_sc_m" value="+ scan() → dict\n+ _check_malware_ports()\n+ _detect_high_freq()" style="text;html=1;strokeColor=none;fillColor=#ffe0b2;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="295" y="420" width="190" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- FirewallStatus -->
+        <mxCell id="e_fw" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#6a1b9a;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="540" y="280" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fw_t" value="FirewallStatus (防火墙)" style="text;html=1;strokeColor=none;fillColor=#6a1b9a;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="280" width="200" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fw_a" value="PK: check_id&#xa;firewall_on: bool&#xa;defender_on: bool&#xa;check_method: L1|L2|L3&#xa;  L1=netsh, L2=PS, L3=sc&#xa;check_timestamp: datetime&#xa;cached: bool&#xa;consecutive_failures: int" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="545" y="310" width="190" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fw_m" value="+ check() → dict\n+ _check_firewall()\n+ _check_defender()\n+ _fallback_to_cache()" style="text;html=1;strokeColor=none;fillColor=#e1bee7;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="545" y="412" width="190" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- ProcessInfo -->
+        <mxCell id="e_proc" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#c62828;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="790" y="280" width="180" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="e_proc_t" value="ProcessInfo (进程)" style="text;html=1;strokeColor=none;fillColor=#c62828;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="790" y="280" width="180" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="e_proc_a" value="PK: proc_id (PID)&#xa;name: str&#xa;exe_path: str&#xa;cmdline: str&#xa;cpu_percent: float&#xa;mem_percent: float&#xa;is_suspicious: bool&#xa;matched_blacklist: str" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="795" y="310" width="170" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="e_proc_m" value="+ scan() → dict\n+ _check_blacklist()\n+ _check_resource_abuse()" style="text;html=1;strokeColor=none;fillColor=#ffcdd2;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="795" y="412" width="170" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Relationships -->
+        <mxCell id="r1" value="1:N&#xa;collects" style="endArrow=classic;html=1;strokeColor=#1565c0;strokeWidth=2;fontSize=9;fontColor=#1565c0;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="420" y="210" as="sourcePoint" /><mxPoint x="140" y="280" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="r2" value="1:N&#xa;detects" style="endArrow=classic;html=1;strokeColor=#1565c0;strokeWidth=2;fontSize=9;fontColor=#1565c0;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="480" y="210" as="sourcePoint" /><mxPoint x="390" y="280" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="r3" value="1:N&#xa;checks" style="endArrow=classic;html=1;strokeColor=#1565c0;strokeWidth=2;fontSize=9;fontColor=#1565c0;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="530" y="210" as="sourcePoint" /><mxPoint x="640" y="280" as="targetPoint" /></mxGeometry>
+        </mxCell>
+        <mxCell id="r4" value="1:N&#xa;monitors" style="endArrow=classic;html=1;strokeColor=#1565c0;strokeWidth=2;fontSize=9;fontColor=#1565c0;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="560" y="210" as="sourcePoint" /><mxPoint x="880" y="280" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <!-- State snapshot -->
+        <mxCell id="e_state" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eceff1;strokeColor=#455a64;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="100" y="520" width="600" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e_state_t" value="StateSnapshot (全局状态快照) — 推送到 ESP32 和 GUI" style="text;html=1;strokeColor=none;fillColor=#455a64;fontColor=#fff;fontSize=12;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="520" width="600" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="e_state_a" value="sec_level | threat_count | active_connections | suspicious_ips | firewall_on | defender_on | cpu_usage | mem_usage | messages[] | ai_status | ai_task" style="text;html=1;strokeColor=none;fillColor=none;fontSize=11;align=left;spacingLeft=8;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="110" y="550" width="580" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="r5" value="aggregates →" style="endArrow=classic;html=1;strokeColor=#455a64;strokeWidth=2;fontSize=9;fontColor=#455a64;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry"><mxPoint x="460" y="460" as="sourcePoint" /><mxPoint x="460" y="520" as="targetPoint" /></mxGeometry>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="1 个控制器 + 4 个监控实体 → 聚合为 StateSnapshot → 推送到 ESP32 / GUI" style="text;html=1;strokeColor=#546e7a;fillColor=#fafafa;align=center;fontSize=10;fontColor=#546e7a;rounded=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="618" width="600" height="22" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

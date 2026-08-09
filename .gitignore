@@ -49,6 +49,11 @@ knowledge_base/
 integrity_manifest.json
 firewall_isolation.ps1
 
+# 覆盖率报告
+.coverage
+htmlcov/
+coverage.xml
+
 # 环境变量
 .env
 .env.local
