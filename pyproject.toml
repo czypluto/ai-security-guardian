@@ -71,8 +71,8 @@ PyQt5 = ">=5.15.0"
 optional = true
 
 [tool.poetry.group.kb.dependencies]
-chromadb = ">=0.4.0"
-sentence-transformers = ">=2.2.0"
+pymilvus = ">=2.4,<3.0"
+qdrant-client = ">=1.9,<2.0"
 
 # Poetry 2.x: extras 必须引用具体包名，不能引用组名
 # 注: [tool.poetry.extras] 已移除 —— Poetry 2.x 下无法引用可选组依赖，

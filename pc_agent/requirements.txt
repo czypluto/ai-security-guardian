@@ -20,9 +20,10 @@ pillow>=10.0.0
 # 桌面 GUI (可选)
 PyQt5>=5.15.0
 
-# 知识库 (向量存储 + 本地 Embedding)
-chromadb>=0.4.0
-sentence-transformers>=2.2.0
+# 知识库 (向量存储: Milvus 主 / Qdrant 后备；嵌入由 scripts/embed_server.py 提供，
+#         需在 WSL 侧运行，不在本机依赖里)
+pymilvus>=2.4,<3.0
+qdrant-client>=1.9,<2.0
 
 # 测试
 pytest>=7.0.0
