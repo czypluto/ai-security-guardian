@@ -109,7 +109,7 @@ $ python agent_cli.py "全面扫描我的网络安全"
 │  │  │(6层隔离) │ │(PS CMD)  │ │(免费API) │ │(免费API)  │  │  │
 │  │  └─────────┘ └──────────┘ └──────────┘ └───────────┘  │  │
 │  │                                                        │  │
-│  │  Knowledge Base (ChromaDB + 向量检索)                   │  │
+│  │  Knowledge Base (Milvus/Qdrant 向量检索)                │  │
 │  │  MCP Server Mode (暴露工具给 Claude Code 等)            │  │
 │  └────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
@@ -164,9 +164,17 @@ $ python agent_cli.py "全面扫描我的网络安全"
 - ✅ **用户自定义** — `skills/user/` 目录支持个人技能
 
 ### 🧠 知识库系统
-- ✅ **ChromaDB 向量存储** — 对话手动保存，语义检索历史上下文
-- ✅ **双模 Embedding** — MiniLM 生产模式 + TF-IDF 零依赖后备
+- ✅ **向量存储** — Milvus (主) / Qdrant (后备)，客户端-服务端，线程安全
+- ✅ **Embedding** — vLLM 部署 Qwen3-Embedding (1.7B)，TF-IDF 零依赖后备
+- ✅ **优雅降级** — vLLM / 向量库不可达时自动退回关键词检索，绝不崩溃
 - ✅ **越用越聪明** — 每次对话自动积累，检索结果注入新对话
+
+> 启动知识库服务（可选）:
+> ```bash
+> bash scripts/start_vector_db.sh          # Milvus + Qdrant 容器
+> # 在 WSL2 终端里:
+> bash scripts/setup_vllm_wsl.sh          # 装 vLLM + 下载 Qwen3-Embedding + 启动
+> ```
 
 ![知识库RAG流程图](images/11_知识库RAG流程图.drawio.png)
 
@@ -253,8 +261,9 @@ python -m venv .venv
 # 安装依赖
 pip install -r pc_agent/requirements.txt
 
-# 可选: 安装知识库支持
-pip install chromadb sentence-transformers
+# 可选: 安装知识库客户端 (Milvus + Qdrant SDK)
+pip install pymilvus qdrant-client
+# 嵌入与向量库服务请见下方"知识库系统"一节的启动命令
 ```
 
 > 📌 **规划中**：一键安装 `installer/setup.bat` 尚未实现，请暂按上面的手动步骤安装。
@@ -358,7 +367,7 @@ ai-security-guardian/
 │   ├── esp32_isolation.py             #   ESP32 网络隔离守护 (v3.3)
 │   ├── download_scanner.py            #   下载前置安全扫描 (v3.3)
 │   ├── skill_loader.py                #   .md 技能自动加载
-│   ├── knowledge_base.py              #   向量知识库 (ChromaDB)
+│   ├── knowledge_base.py              #   向量知识库 (Milvus/Qdrant)
 │   ├── defender_tools.py              #   Defender + NVD CVE
 │   ├── otx_tools.py                   #   AlienVault OTX 威胁情报
 │   ├── web_tools.py                   #   DuckDuckGo 搜索 + 抓取
@@ -391,8 +400,8 @@ ai-security-guardian/
 │   └── generate_report.py             #   安全报告生成
 │
 ├── knowledge_base/                    # 🧠 本地知识库
-│   ├── conversations/                 #   Markdown 对话文件
-│   └── chroma/                        #   ChromaDB 向量数据
+│   ├── conversations/                 #   Markdown 对话文件 (始终本地保存)
+│   └── vector_meta.json               #   向量库元信息 (维度/集合/provider)
 │
 ├── docs/                              # 📖 文档
 │   ├── parts_list.md                  #   淘宝零件清单
@@ -509,8 +518,8 @@ knowledge_base:
 | **LLM** | OpenAI-compatible API | DeepSeek / 智谱 / 硅基流动 |
 | **桌面 GUI** | PyQt5 + QSS | 暗色极简主题 |
 | **系统托盘** | pystray + Pillow | 后台运行 |
-| **向量数据库** | ChromaDB | 对话语义检索 |
-| **Embedding** | sentence-transformers (MiniLM) / TF-IDF 后备 | 双模 |
+| **向量数据库** | Milvus (主) / Qdrant (后备) | 对话语义检索 |
+| **Embedding** | vLLM (Qwen3-Embedding-1.7B) / TF-IDF 后备 | 双模 |
 | **MCP 协议** | JSON-RPC 2.0 | 工具扩展 |
 | **威胁情报** | AlienVault OTX + NIST NVD | 免费 API |
 | **搜索** | DuckDuckGo Lite | 免费无 Key |
@@ -655,7 +664,7 @@ MIT License — 自由使用、修改、分发
 - ESP32 & Arduino 社区
 - Adafruit SSD1306 / GFX 驱动库
 - psutil 系统监控库
-- ChromaDB 向量数据库
+- Milvus / Qdrant 向量数据库
 - AlienVault OTX 免费威胁情报
 - NIST NVD 免费漏洞数据库
 - PyQt5 桌面框架

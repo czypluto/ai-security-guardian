@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 严格按照模板格式生成 AI 网络安全管家 实训报告 DOCX
-模板: 40+20232501278+陈梓烨+小学期实训报告.docx
+
+封面个人信息通过环境变量传入，不写进仓库：
+    REPORT_NAME / REPORT_ID / REPORT_DEPT / REPORT_MAJOR / REPORT_CLASS
+模板: <学号>+<姓名>+小学期实训报告.docx
 """
 
 import os
@@ -14,22 +17,20 @@ from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Inches, Pt, RGBColor
 from PIL import Image, ImageDraw, ImageFont
 
-OUTPUT = r"C:\Users\24522\Desktop\AI网络安全管家_实训报告_陈梓烨.docx"
+OUTPUT = os.path.join(
+    os.path.expanduser("~"), "Desktop",
+    f"AI网络安全管家_实训报告_{os.getenv('REPORT_NAME', '姓名')}.docx")
 PLACEHOLDER_DIR = os.path.join(tempfile.gettempdir(), 'report_placeholders')
 os.makedirs(PLACEHOLDER_DIR, exist_ok=True)
 
-# ============================================================
-# 占位图生成
-# ============================================================
+# ---- 占位图生成 ----
 def make_placeholder(label: str, width_px=800, height_px=480) -> str:
     """生成灰色占位图 PNG，返回文件路径。尺寸 16:10 适合文档"""
     img = Image.new('RGB', (width_px, height_px), '#e8e8e8')
     draw = ImageDraw.Draw(img)
 
-    # 外边框
     draw.rectangle([4, 4, width_px-5, height_px-5], outline='#c0c0c0', width=2)
 
-    # 虚线十字
     cx, cy = width_px // 2, height_px // 2
     for x in range(0, width_px, 8):
         draw.point((x, cy), fill='#d0d0d0')
@@ -105,9 +106,7 @@ def insert_placeholder(doc, label: str):
 
 doc = Document()
 
-# ============================================================
-# 页面设置
-# ============================================================
+# ---- 页面设置 ----
 for sec in doc.sections:
     sec.page_width  = Cm(21.0)
     sec.page_height = Cm(29.7)
@@ -116,9 +115,7 @@ for sec in doc.sections:
     sec.top_margin    = Cm(2.5)
     sec.bottom_margin = Cm(2.5)
 
-# ============================================================
-# 样式设置
-# ============================================================
+# ---- 样式设置 ----
 
 style = doc.styles['Normal']
 style.font.name = '宋体'
@@ -169,9 +166,7 @@ h3pf.space_before = Pt(6)
 h3pf.space_after  = Pt(3)
 h3pf.line_spacing = 1.5
 
-# ============================================================
-# 辅助函数
-# ============================================================
+# ---- 辅助函数 ----
 
 def add_run(para, text, font_name='宋体', size=Pt(12), bold=False, italic=False, color=None):
     """添加格式化 run"""
@@ -210,38 +205,30 @@ def body_bold_prefix(prefix, rest, indent=True):
     add_run(p, rest, '宋体', Pt(12))
     return p
 
-def heading1(text):
-    """一级标题"""
+def _heading(text, *, alignment, size, space_before, space_after, line_spacing):
     p = doc.add_paragraph()
     pf = p.paragraph_format
-    pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    pf.space_before = Pt(12)
-    pf.space_after  = Pt(8)
-    pf.line_spacing = 1.2
-    add_run(p, text, '黑体', Pt(16), bold=True)
+    pf.alignment = alignment
+    pf.space_before = Pt(space_before)
+    pf.space_after  = Pt(space_after)
+    pf.line_spacing = line_spacing
+    add_run(p, text, '黑体', Pt(size), bold=True)
     return p
+
+def heading1(text):
+    """一级标题"""
+    return _heading(text, alignment=WD_ALIGN_PARAGRAPH.CENTER, size=16,
+                    space_before=12, space_after=8, line_spacing=1.2)
 
 def heading2(text):
     """二级标题"""
-    p = doc.add_paragraph()
-    pf = p.paragraph_format
-    pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    pf.space_before = Pt(12)
-    pf.space_after  = Pt(6)
-    pf.line_spacing = 1.5
-    add_run(p, text, '黑体', Pt(15), bold=True)
-    return p
+    return _heading(text, alignment=WD_ALIGN_PARAGRAPH.LEFT, size=15,
+                    space_before=12, space_after=6, line_spacing=1.5)
 
 def heading3(text):
     """三级标题"""
-    p = doc.add_paragraph()
-    pf = p.paragraph_format
-    pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    pf.space_before = Pt(6)
-    pf.space_after  = Pt(3)
-    pf.line_spacing = 1.5
-    add_run(p, text, '黑体', Pt(14), bold=True)
-    return p
+    return _heading(text, alignment=WD_ALIGN_PARAGRAPH.LEFT, size=14,
+                    space_before=6, space_after=3, line_spacing=1.5)
 
 def centering(text, font_name='宋体', size=Pt(12), bold=False):
     """居中段落"""
@@ -291,9 +278,7 @@ def add_table(headers, rows):
             add_run(p, str(val), '宋体', Pt(10.5))
     return table
 
-# ============================================================
-# 页眉页脚
-# ============================================================
+# ---- 页眉页脚 ----
 section = doc.sections[0]
 header = section.header
 header.is_linked_to_previous = False
@@ -322,9 +307,7 @@ run._element.append(fldChar2)
 
 print("页面设置完成，开始写入内容...")
 
-# ============================================================
-# COVER PAGE
-# ============================================================
+# ---- COVER PAGE ----
 
 # Title
 p = doc.add_paragraph()
@@ -343,11 +326,11 @@ doc.add_paragraph()  # spacer
 
 cover_data = [
     ('实训项目:', 'AI 网络安全管家 — 智能安全守护系统'),
-    ('学生姓名:', '陈梓烨'),
-    ('学    号:', '20232501278'),
-    ('所在院系:', '计算机科学与技术学院'),
-    ('专    业:', '计算机科学与技术'),
-    ('班    级:', '计科2023-6'),
+    ('学生姓名:', os.getenv('REPORT_NAME', '')),
+    ('学    号:', os.getenv('REPORT_ID', '')),
+    ('所在院系:', os.getenv('REPORT_DEPT', '')),
+    ('专    业:', os.getenv('REPORT_MAJOR', '')),
+    ('班    级:', os.getenv('REPORT_CLASS', '')),
     ('指导教师:', ''),
     ('完成日期:', '2026年7月28日'),
 ]
@@ -369,9 +352,7 @@ for i, (label, value) in enumerate(cover_data):
 
 doc.add_page_break()
 
-# ============================================================
-# 摘要
-# ============================================================
+# ---- 摘要 ----
 centering('摘  要', '黑体', Pt(16), bold=True)
 
 body('本实训项目设计并实现了一个集 ESP32 嵌入式硬件、Windows 桌面安全监控与'
@@ -380,7 +361,7 @@ body('本实训项目设计并实现了一个集 ESP32 嵌入式硬件、Windows
      '进程行为、防火墙状态和系统资源，并通过 JSON over Serial 协议将安全状态推送至'
      'ESP32 + OLED 显示屏的物理终端设备。同时，系统集成了多模型 LLM 客户端'
      '（支持 DeepSeek、智谱 AI、硅基流动），由二次元角色"安小盾"以表情和台词形式'
-     '进行交互反馈。项目还实现了基于 ChromaDB 的向量知识库、MCP 协议支持、Skills '
+     '进行交互反馈。项目还实现了基于 Milvus/Qdrant 的向量知识库、MCP 协议支持、Skills '
      '技能系统和多层安全沙箱等高级功能。测试结果表明，系统能够准确检测常见网络安全威胁，'
      '实时性良好，达到了设计目标。')
 
@@ -392,9 +373,7 @@ add_run(p, '网络安全；ESP32；大模型；AI Agent；安全监控；嵌入�
 
 doc.add_paragraph()  # spacer
 
-# ============================================================
-# ABSTRACT
-# ============================================================
+# ---- ABSTRACT ----
 centering('ABSTRACT', 'Times New Roman', Pt(16), bold=True)
 
 body('This training project designs and implements an intelligent network security '
@@ -404,7 +383,7 @@ body('This training project designs and implements an intelligent network securi
      'netsh, and PowerShell interfaces, and pushes security status to an ESP32+OLED '
      'physical terminal through JSON-over-Serial protocol. It features a multi-model '
      'LLM client (DeepSeek/Zhipu/SiliconFlow) with an anime character "An Xiaodun" '
-     'for interactive feedback. Advanced features include ChromaDB vector knowledge base, '
+     'for interactive feedback. Advanced features include Milvus/Qdrant vector knowledge base, '
      'MCP protocol support, a Skills system, and multi-layer security sandbox. '
      'Test results demonstrate accurate threat detection and real-time responsiveness.',
      indent=True)
@@ -418,9 +397,7 @@ add_run(p, 'Network Security; ESP32; Large Language Model; AI Agent; '
 
 doc.add_page_break()
 
-# ============================================================
-# 目录页
-# ============================================================
+# ---- 目录页 ----
 centering('目  录', '黑体', Pt(16), bold=True)
 doc.add_paragraph()
 
@@ -475,9 +452,7 @@ for entry, level in toc_entries:
 
 doc.add_page_break()
 
-# ============================================================
-# 第1章 引言
-# ============================================================
+# ---- 第1章 引言 ----
 heading1('1  引言')
 
 heading2('1.1  研究背景及意义')
@@ -553,9 +528,7 @@ body('本报告共分为八章。第1章为引言，介绍研究背景、现状�
 
 doc.add_page_break()
 
-# ============================================================
-# 第2章 相关理论与技术
-# ============================================================
+# ---- 第2章 相关理论与技术 ----
 heading1('2  相关理论与技术')
 
 body('本章介绍AI网络安全管家项目所涉及的关键技术和理论基础，'
@@ -628,16 +601,14 @@ body('MCP（Model Context Protocol）是由Anthropic发布的开放协议标准�
      '和MCP Server两种角色。作为Client，可通过JSON-RPC 2.0协议连接外部MCP服务器，'
      '自动发现并调用其工具。作为Server，可将自身的安全工具暴露给外部客户端（如Claude Code）使用。', indent=True)
 
-body('向量知识库基于ChromaDB构建，使用sentence-transformers的paraphrase-multilingual-'
-     'MiniLM-L12-v2模型（约470MB）进行中英双语文本的向量化编码。当GPU或sentence-transformers'
-     '不可用时，系统自动降级到纯Python的TF-IDF后备方案。知识库存储对话历史并支持语义检索，'
-     '在每次对话前将相关知识注入系统提示词，实现检索增强生成（RAG）。', indent=True)
+body('向量知识库基于Milvus（主）/ Qdrant（后备）构建，使用vLLM部署的Qwen3-Embedding-'
+     '1.7B模型（1024维）进行文本的向量化编码。当vLLM或向量库服务不可达时，'
+     '系统自动降级到纯Python的TF-IDF后备方案与Markdown关键词检索。知识库存储对话历史并'
+     '支持语义检索，在每次对话前将相关知识注入系统提示词，实现检索增强生成（RAG）。', indent=True)
 
 doc.add_page_break()
 
-# ============================================================
-# 第3章 系统分析
-# ============================================================
+# ---- 第3章 系统分析 ----
 heading1('3  系统分析')
 
 heading2('3.1  可行性分析')
@@ -687,9 +658,7 @@ body('（1）实时性：安全扫描间隔5秒，状态推送延迟<1秒，心�
 
 doc.add_page_break()
 
-# ============================================================
-# 第4章 系统概要设计
-# ============================================================
+# ---- 第4章 系统概要设计 ----
 heading1('4  系统概要设计')
 
 heading2('4.1  系统架构设计')
@@ -727,7 +696,7 @@ modules = [
     ('AI智能模块', 'LLM多模型客户端、ReAct Agent引擎、安全分析、威胁解释、角色对话'),
     ('设备通信模块', 'Serial/WiFi双模连接、自动COM口检测、心跳保活、断连恢复'),
     ('角色系统模块', '8种表情映射、12类60+句台词库、LLM动态台词、自定义角色导入'),
-    ('知识库模块', 'ChromaDB向量存储、3级Embedding降级、语义检索、对话保存'),
+    ('知识库模块', 'Milvus/Qdrant向量存储、vLLM嵌入、语义检索、对话保存'),
     ('扩展能力模块', 'MCP Client/Server、Skills技能热加载、Web搜索、威胁情报查询'),
     ('用户界面模块', 'PyQt5桌面GUI、AI对话窗口、CLI Agent、系统托盘'),
 ]
@@ -748,20 +717,18 @@ figure_caption('图4-2  系统主流业务流程图')
 
 heading2('4.4  数据库设计')
 
-body('本系统的数据存储主要包括两个方面：一是通过ChromaDB向量数据库存储对话历史和知识片段，'
+body('本系统的数据存储主要包括两个方面：一是通过Milvus/Qdrant向量数据库存储对话历史和知识片段，'
      '二是通过Markdown文件存储知识库对话记录。由于系统以实时监控为主，'
      '不涉及复杂的业务数据关系，因此不设计传统的关系型数据库ER模型。', indent=True)
 
-body('ChromaDB中存储的向量数据结构包括：对话ID（自动生成UUID）、对话内容（文本）、'
-     '向量嵌入（384/768维浮点数组）、元数据（时间戳、对话角色、主题标签）。'
-     '知识库目录结构为：knowledge_base/chroma/（向量数据）+ '
-     'knowledge_base/conversations/（Markdown对话文件）。', indent=True)
+body('向量库中存储的向量数据结构包括：对话ID（自动生成UUID）、对话内容（文本）、'
+     '向量嵌入（1024维浮点数组）、元数据（时间戳、对话角色、主题标签）。'
+     '知识库目录结构为：knowledge_base/conversations/（Markdown对话文件）+ '
+     'knowledge_base/vector_meta.json（向量库元信息），向量本体存于 Milvus/Qdrant 服务端。', indent=True)
 
 doc.add_page_break()
 
-# ============================================================
-# 第5章 系统详细设计
-# ============================================================
+# ---- 第5章 系统详细设计 ----
 heading1('5  系统详细设计')
 
 heading2('5.1  PC Agent 安全监控模块')
@@ -866,9 +833,7 @@ body('（3）CLI Agent（agent_cli.py, 315行）：交互式对话模式、单�
 
 doc.add_page_break()
 
-# ============================================================
-# 第6章 系统实现
-# ============================================================
+# ---- 第6章 系统实现 ----
 heading1('6  系统实现')
 
 body('本章展示系统各模块的实际运行效果，包括桌面仪表盘、AI对话窗口、'
@@ -960,9 +925,7 @@ figure_caption('图6-6  ESP32 OLED 双屏显示效果对比')
 
 doc.add_page_break()
 
-# ============================================================
-# 第7章 系统测试
-# ============================================================
+# ---- 第7章 系统测试 ----
 heading1('7  系统测试')
 
 heading2('7.1  测试分析')
@@ -1026,13 +989,11 @@ body('（3）安全机制（沙箱命令白名单、设备断连恢复、LLM故�
      '在异常场景下表现正确。', indent=True)
 
 body('（4）已知限制：安全事件日志读取和进程终止操作需要管理员权限；'
-     'LLM分析和搜索功能需要互联网连接；ChromaDB+Embedding首次加载较慢（约10秒）。', indent=True)
+     'LLM分析和搜索功能需要互联网连接；vLLM嵌入与向量库服务需提前启动（见scripts/）。', indent=True)
 
 doc.add_page_break()
 
-# ============================================================
-# 第8章 总结与展望
-# ============================================================
+# ---- 第8章 总结与展望 ----
 heading1('8  总结与展望')
 
 body('本实训项目成功设计并实现了一个集ESP32嵌入式硬件、Windows桌面安全监控、'
@@ -1044,7 +1005,7 @@ body('项目的主要成果包括：（1）实现了实时Windows安全监控引
      '支持多级安全等级评估和降级策略；（2）构建了基于ReAct范式的AI Agent，集成25+安全工具'
      '和MCP协议，具备强大的可扩展性；（3）开发了ESP32 OLED双屏固件，以极低成本（~33元）'
      '实现了物理安全终端；（4）设计了二次元角色"安小盾"的表情台词系统，'
-     '通过LLM驱动实现智能交互；（5）实现了向量知识库（ChromaDB+3级Embedding降级）、'
+     '通过LLM驱动实现智能交互；（5）实现了向量知识库（Milvus/Qdrant+vLLM嵌入）、'
      'Skills技能系统和多层安全沙箱等高级特性。', indent=True)
 
 body('在项目开发过程中，遇到并解决了多个关键技术问题：'
@@ -1068,9 +1029,7 @@ body('通过本次实训，我深入掌握了Python全栈开发、嵌入式系�
 
 doc.add_page_break()
 
-# ============================================================
-# 参考文献
-# ============================================================
+# ---- 参考文献 ----
 heading1('参考文献')
 
 refs = [
@@ -1121,9 +1080,7 @@ for ref in refs:
 
 doc.add_page_break()
 
-# ============================================================
-# 致谢
-# ============================================================
+# ---- 致谢 ----
 heading1('致  谢')
 
 body('在本实训项目的完成过程中，我得到了多方面的帮助和支持，在此表示诚挚的感谢。')
@@ -1132,7 +1089,7 @@ body('首先感谢计算机科学与技术学院的各位老师在小学期实�
      '为我提供了宝贵的实践机会和项目展示平台。')
 
 body('感谢开源社区的贡献者们。本项目大量使用了开源技术，包括但不限于psutil、'
-     'PyQt5、Flask、ChromaDB、Arduino、Adafruit SSD1306等。'
+     'PyQt5、Flask、Milvus/Qdrant、Arduino、Adafruit SSD1306等。'
      '开源精神让知识得以共享，让技术得以普惠。')
 
 body('感谢AI开源社区的技能创作者，特别是academic-research-skills和codex-claude-academic-skills'
@@ -1144,9 +1101,7 @@ body('最后，感谢所有在项目开发过程中给予我反馈和建议的�
 
 doc.add_page_break()
 
-# ============================================================
-# 附录
-# ============================================================
+# ---- 附录 ----
 centering('附  录', '黑体', Pt(16), bold=True)
 doc.add_paragraph()
 
@@ -1165,8 +1120,9 @@ deps = [
     ('pywin32 305', 'Windows EventLog API'),
     ('requests 2.34.2', 'LLM HTTP客户端'),
     ('PyYAML 6.0.3', '配置文件解析'),
-    ('chromadb', '向量数据库'),
-    ('sentence-transformers', '文本向量化'),
+    ('pymilvus', '向量数据库 (Milvus 主)'),
+    ('qdrant-client', '向量数据库 (Qdrant 后备)'),
+    ('vllm', '嵌入服务 (Qwen3-Embedding, WSL2)'),
     ('pystray 0.19.5', '系统托盘'),
     ('pytest 8.4.2', '单元测试框架'),
     ('python-docx 1.2.0', 'DOCX文档生成'),
@@ -1197,8 +1153,7 @@ add_table(
     ],
 )
 
-# ============================================================
-# 保存
-# ============================================================
+# ---- 保存 ----
 doc.save(OUTPUT)
 print(f"\n[DONE] Report saved: {OUTPUT}")
+
