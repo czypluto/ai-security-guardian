@@ -25,9 +25,7 @@ from typing import Optional
 
 logger = logging.getLogger("Guardian.Sandbox")
 
-# ================================================================
-#  Constants
-# ================================================================
+# ---- Constants ----
 
 # Whitelist — only these executables (and their arguments) are allowed
 SAFE_COMMANDS: dict[str, list[str]] = {
@@ -88,9 +86,7 @@ ALLOWED_WRITE_PATHS = [
     os.environ.get("TEMP", r"C:\Windows\Temp"),
 ]
 
-# ================================================================
-#  Windows Job Object (via ctypes)
-# ================================================================
+# ---- Windows Job Object (via ctypes) ----
 
 # Windows API constants
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
@@ -240,9 +236,7 @@ def set_job_ui_restrictions(job_handle: ctypes.c_void_p):
     )
 
 
-# ================================================================
-#  Command Validation
-# ================================================================
+# ---- Command Validation ----
 
 class CommandValidator:
     """Validate commands against whitelist and blocklist."""
@@ -283,9 +277,7 @@ class CommandValidator:
         return sorted(SAFE_COMMANDS.keys())
 
 
-# ================================================================
-#  Audit Logger
-# ================================================================
+# ---- Audit Logger ----
 
 class AuditLogger:
     """Write an audit trail of all sandboxed executions."""
@@ -317,9 +309,7 @@ class AuditLogger:
             logger.warning(f"Audit log write failed: {e}")
 
 
-# ================================================================
-#  Sandbox Executor
-# ================================================================
+# ---- Sandbox Executor ----
 
 class SandboxExecutor:
     """Execute commands in a multi-layer sandbox."""
@@ -452,9 +442,7 @@ class SandboxExecutor:
         return {"allowed": allowed, "reason": reason}
 
 
-# ================================================================
-#  Singleton
-# ================================================================
+# ---- Singleton ----
 
 _default_sandbox: Optional[SandboxExecutor] = None
 
@@ -464,3 +452,4 @@ def get_sandbox() -> SandboxExecutor:
     if _default_sandbox is None:
         _default_sandbox = SandboxExecutor()
     return _default_sandbox
+

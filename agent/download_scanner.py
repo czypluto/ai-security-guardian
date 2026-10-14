@@ -26,9 +26,7 @@ from typing import Optional
 
 logger = logging.getLogger("Guardian.DownloadScanner")
 
-# ================================================================
-#  Detection Patterns
-# ================================================================
+# ---- Detection Patterns ----
 
 # Prompt injection — attempts to hijack the AI agent
 PROMPT_INJECTION_PATTERNS = [
@@ -116,9 +114,7 @@ INVISIBLE_CHARACTERS = [
     '᠎',  # Mongolian vowel separator
 ]
 
-# ================================================================
-#  Scanner
-# ================================================================
+# ---- Scanner ----
 
 class ScanResult:
     """Result of a security scan."""
@@ -165,7 +161,7 @@ def scan_before_install(
     """
     result = ScanResult()
 
-    # 0. Size check
+    # Size check
     content_size = len(content.encode("utf-8")) if isinstance(content, str) else 0
     if content_size > max_size_bytes:
         result.add("CRITICAL", "size", f"File too large: {content_size} bytes (max {max_size_bytes})")
@@ -173,7 +169,7 @@ def scan_before_install(
     if content_size > 100 * 1024 and file_type == "skill":
         result.add("MEDIUM", "size", f"Skill file unusually large: {content_size} bytes. Skills should be <50KB")
 
-    # 1. Hidden Unicode characters (check first — invisible text is always malicious)
+    # Hidden Unicode characters (check first — invisible text is always malicious)
     hidden_chars_found = []
     for i, char in enumerate(content):
         if char in INVISIBLE_CHARACTERS:
@@ -191,7 +187,7 @@ def scan_before_install(
         result.add("CRITICAL", "hidden_text",
                    "Hidden text in skill file — likely prompt injection attack. REJECTED.")
 
-    # 2. Prompt injection patterns (for skills, prompts, configs)
+    # Prompt injection patterns (for skills, prompts, configs)
     if file_type in ("skill", "mcp_config", "unknown"):
         for pattern in PROMPT_INJECTION_PATTERNS:
             matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
@@ -201,7 +197,7 @@ def scan_before_install(
                            str(matches[:3]))
                 break  # One injection finding is enough
 
-    # 3. Code execution patterns (for text files)
+    # Code execution patterns (for text files)
     if file_type in ("skill", "script", "mcp_config", "unknown"):
         for pattern in CODE_EXECUTION_PATTERNS:
             matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
@@ -210,7 +206,7 @@ def scan_before_install(
                            "code_execution",
                            f"Code execution pattern in {file_type}: '{match}'")
 
-    # 4. Obfuscation detection
+    # Obfuscation detection
     obfuscation_count = 0
     for pattern in OBFUSCATION_PATTERNS:
         matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
@@ -220,7 +216,7 @@ def scan_before_install(
                    f"Multiple obfuscation indicators ({obfuscation_count}) — "
                    f"this content may be deliberately hidden")
 
-    # 5. Suspicious URLs
+    # Suspicious URLs
     urls_found = re.findall(r'https?://[^\s<>"\')\]]+', content)
     for url in urls_found:
         for pattern in SUSPICIOUS_URL_PATTERNS:
@@ -228,7 +224,7 @@ def scan_before_install(
                 result.add("MEDIUM", "suspicious_url",
                            f"Suspicious URL in {file_type}: {url} (matched: {pattern})")
 
-    # 6. Content type-specific checks
+    # Content type-specific checks
     if file_type == "skill":
         _scan_skill_specific(content, result)
     elif file_type == "mcp_config":
@@ -236,7 +232,7 @@ def scan_before_install(
     elif file_type == "script":
         _scan_script_specific(content, result)
 
-    # 7. Metadata
+    # Metadata
     if source:
         result.add("INFO", "metadata", f"Scanned content from: {source}")
 
@@ -336,9 +332,7 @@ def _scan_script_specific(content: str, result: ScanResult):
             result.add("CRITICAL", "script_malicious", description)
 
 
-# ================================================================
-#  Utility: Typosquatting Detection
-# ================================================================
+# ---- Utility: Typosquatting Detection ----
 
 # Common legitimate packages (for typo comparison)
 COMMON_PACKAGES = [
@@ -394,9 +388,7 @@ def _levenshtein(s1: str, s2: str) -> int:
     return prev_row[-1]
 
 
-# ================================================================
-#  Quick Scan (for use in installers)
-# ================================================================
+# ---- Quick Scan (for use in installers) ----
 
 def quick_scan_skill(name: str, content: str, source: str = "") -> dict:
     """
@@ -439,9 +431,7 @@ def quick_scan_mcp(name: str, install_command: str, description: str = "") -> di
     }
 
 
-# ================================================================
-#  File-level scan
-# ================================================================
+# ---- File-level scan ----
 
 def scan_file(file_path: str) -> ScanResult:
     """
@@ -485,9 +475,7 @@ def scan_file(file_path: str) -> ScanResult:
     return result
 
 
-# ================================================================
-#  Tool Handlers (for tool registry)
-# ================================================================
+# ---- Tool Handlers (for tool registry) ----
 
 def scan_download_handler(content: str, file_type: str = "unknown",
                           source: str = "") -> dict:
@@ -529,9 +517,7 @@ def scan_file_handler(file_path: str) -> dict:
     }
 
 
-# ================================================================
-#  CLI
-# ================================================================
+# ---- CLI ----
 
 if __name__ == "__main__":
     import argparse
@@ -577,3 +563,4 @@ if __name__ == "__main__":
             for f in result.findings:
                 sev_icon = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🔵", "INFO": "⚪"}
                 print(f"    {sev_icon.get(f['severity'], '?')} [{f['severity']}] {f['category']}: {f['detail'][:120]}")
+

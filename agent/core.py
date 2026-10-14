@@ -56,9 +56,7 @@ class AgentCore:
         # Conversation tracking for KB save
         self._conversation_messages: list[dict] = []
 
-    # ================================================================
-    #  MCP & Skills integration
-    # ================================================================
+    # ---- MCP & Skills integration ----
 
     def _merge_mcp_tools(self):
         """Register MCP-discovered tools into the built-in registry."""
@@ -95,9 +93,7 @@ class AgentCore:
 
         return prompt
 
-    # ================================================================
-    #  Public API
-    # ================================================================
+    # ---- Public API ----
 
     def run(self, user_input: str) -> str:
         """Run agent, return final text."""
@@ -111,15 +107,12 @@ class AgentCore:
 
     def run_stream(self, user_input: str) -> Generator[dict, None, None]:
         """Run agent with streaming output. Yields events."""
-        # Check for skill triggers
         matched = self.skills.match_triggers(user_input)
         if matched and not self._active_skill:
             self._active_skill = matched
 
-        # Track user message for KB
         self._conversation_messages.append({"role": "user", "content": user_input})
 
-        # Search knowledge base for relevant context
         kb_context = ""
         if self._kb_enabled:
             try:
@@ -196,9 +189,7 @@ class AgentCore:
             yield {"type": "text", "content": "[Max iterations reached]"}
         self._active_skill = None
 
-    # ================================================================
-    #  Knowledge Base
-    # ================================================================
+    # ---- Knowledge Base ----
 
     def save_conversation(self, metadata: dict = None) -> Optional[str]:
         """Save current conversation to knowledge base."""
@@ -219,9 +210,7 @@ class AgentCore:
         self._conversation_messages.clear()
         self._active_skill = None
 
-    # ================================================================
-    #  Info
-    # ================================================================
+    # ---- Info ----
 
     @property
     def active_model(self) -> str:
@@ -230,11 +219,7 @@ class AgentCore:
 
     @property
     def tool_count(self) -> int:
-        builtin = len(self.tools.list_all())
-        mcp = self.mcp.total_tools
-        if mcp:
-            return builtin  # MCP tools are already merged
-        return builtin
+        return len(self.tools.list_all())
 
     @property
     def skill_count(self) -> int:
@@ -252,3 +237,5 @@ class AgentCore:
             "kb_convs": self.kb.conversation_count if self.kb else 0,
         }
         return result
+
+

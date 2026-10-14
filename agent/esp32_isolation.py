@@ -30,9 +30,7 @@ from pathlib import Path
 
 logger = logging.getLogger("Guardian.ESP32Isolation")
 
-# ================================================================
-#  Allowed Serial Commands (PC → ESP32)
-# ================================================================
+# ---- Allowed Serial Commands (PC → ESP32) ----
 
 # The ESP32 should ONLY accept these commands from the PC.
 # Any other command structure is suspicious.
@@ -230,9 +228,7 @@ class SerialEgressGuard:
         }
 
 
-# ================================================================
-#  Windows Firewall Rule Manager
-# ================================================================
+# ---- Windows Firewall Rule Manager ----
 
 class FirewallRuleManager:
     """
@@ -328,9 +324,7 @@ Write-Host "Run: Get-NetFirewallRule -DisplayName '{cls.GUARDIAN_RULE_PREFIX}*' 
             return {"rules_installed": False, "error": str(e)}
 
 
-# ================================================================
-#  ESP32 Firmware Integrity (PC-side verification)
-# ================================================================
+# ---- ESP32 Firmware Integrity (PC-side verification) ----
 
 class FirmwareIntegrityChecker:
     """
@@ -424,9 +418,7 @@ class FirmwareIntegrityChecker:
         return {"ok": False, "error": "Startup handshake doesn't match expected format"}
 
 
-# ================================================================
-#  Unified ESP32 Isolation Report
-# ================================================================
+# ---- Unified ESP32 Isolation Report ----
 
 def run_isolation_audit() -> dict:
     """
@@ -487,9 +479,7 @@ def run_isolation_audit() -> dict:
     }
 
 
-# ================================================================
-#  CLI
-# ================================================================
+# ---- CLI ----
 
 if __name__ == "__main__":
     import argparse
@@ -544,3 +534,4 @@ if __name__ == "__main__":
             for r in report["recommendations"]:
                 print(f"    > {r}")
         print("\n" + "=" * 60)
+

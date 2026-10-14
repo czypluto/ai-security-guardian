@@ -66,9 +66,7 @@ def _is_path_safe(file_path: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-# ================================================================
-#  Safe install tools
-# ================================================================
+# ---- Safe install tools ----
 
 def install_skill(name: str, description: str, content: str,
                   triggers: str = "") -> dict:
@@ -222,3 +220,4 @@ def list_installed_skills() -> dict:
                     "preview": first_lines[:200],
                 })
     return {"skills_dir": SKILLS_DIR, "count": len(skills), "skills": skills}
+

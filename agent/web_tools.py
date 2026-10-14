@@ -75,20 +75,17 @@ def web_fetch(url: str) -> dict:
         req = urllib.request.Request(url)
         req.add_header("User-Agent", "AI-Security-Guardian/2.0")
         with urllib.request.urlopen(req, timeout=15) as resp:
-            # Read up to 64KB
             html = resp.read(65536).decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
         return {"error": f"HTTP {e.code}", "url": url}
     except Exception as e:
         return {"error": str(e), "url": url}
 
-    # Strip HTML tags to plain text
     text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
 
-    # Truncate to 8KB
     if len(text) > 8192:
         text = text[:8192] + f"\n\n[truncated from {len(text)} chars]"
 

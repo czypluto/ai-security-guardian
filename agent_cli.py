@@ -71,9 +71,7 @@ def print_tools(agent: AgentCore):
         print()
 
 
-# ================================================================
-#  Stream display helpers
-# ================================================================
+# ---- Stream display helpers ----
 
 COLORS = {
     "tool_start": "\033[90m",   # gray
@@ -122,9 +120,7 @@ def display_stream(events):
     print()
 
 
-# ================================================================
-#  Helpers
-# ================================================================
+# ---- Helpers ----
 
 def _confirm_and_save(agent: AgentCore) -> bool:
     """询问用户是否保存对话到知识库。返回 True 表示已保存。"""
@@ -150,9 +146,7 @@ def _confirm_and_save(agent: AgentCore) -> bool:
     return False
 
 
-# ================================================================
-#  Modes
-# ================================================================
+# ---- Modes ----
 
 def run_single_query(agent: AgentCore, query: str):
     """Run a single question and exit."""
@@ -227,11 +221,14 @@ def run_chat_mode(agent: AgentCore):
                     print(f"  Conversations: {stats['conversations']}")
                     print(f"  Vector docs:   {stats['vector_count']}")
                     print(f"  Embedding:     {stats['embedding_type']}")
-                    print(f"  Storage:       {stats['chroma_dir']}")
+                    print(f"  Vector DB:     {stats['vector_db']}")
+                    print(f"  Storage:       {stats['storage_dir']}")
                     print()
                 else:
                     print("  Knowledge base not available.")
-                    print("  Install: pip install chromadb sentence-transformers")
+                    print("  Install: pip install pymilvus qdrant-client")
+                    print("  Start vector DB: bash scripts/start_vector_db.sh")
+                    print("  Start embed svc: wsl -e bash -lc 'bash scripts/run_embed.sh'")
                     print()
             elif cmd[0] == "run":
                 # Direct tool invocation: /run scan_network
@@ -276,9 +273,7 @@ def run_chat_mode(agent: AgentCore):
         print()
 
 
-# ================================================================
-#  Main
-# ================================================================
+# ---- Main ----
 
 def main():
     parser = argparse.ArgumentParser(
@@ -314,17 +309,17 @@ Examples:
     # Create agent
     tools = create_tool_registry()
 
-    # Initialize knowledge base
+    # Initialize knowledge base (Milvus 主 / Qdrant 后备；vLLM 嵌入；不可达自动降级)
     kb = None
     if config.knowledge_base_enabled:
         try:
             kb = get_knowledge_base(
                 persist_dir=config.knowledge_base_dir or None,
+                vector_db_cfg=config.knowledge_base_vector_db,
+                embedding_cfg=config.knowledge_base_embedding,
             )
-            # Override embedding model if different from default
-            if config.knowledge_base_embedding_model and kb._embed_type == "sentence-transformers":
-                pass  # Model is set at init time; rebuild if needed
-            print(f"  \033[90m知识库: {kb.conversation_count} 对话, {kb.count} 向量\033[0m", file=sys.stderr)
+            print(f"  \033[90m知识库: {kb.conversation_count} 对话, {kb.count} 向量, "
+                  f"嵌入={kb._embed_type}, 向量库={kb._vector_db_name}\033[0m", file=sys.stderr)
         except Exception as e:
             print(f"  \033[90m知识库初始化跳过: {e}\033[0m", file=sys.stderr)
 
@@ -344,3 +339,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+

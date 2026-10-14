@@ -35,9 +35,7 @@ class LLMRouter:
             return None
         return self._providers[self._active_idx]
 
-    # ================================================================
-    #  Main API
-    # ================================================================
+    # ---- Main API ----
 
     def chat(
         self,
@@ -85,9 +83,7 @@ class LLMRouter:
         provider = self._providers[self._active_idx]
         yield from self._call_stream(provider, messages, tools, max_tokens, temperature)
 
-    # ================================================================
-    #  Internal — API calls
-    # ================================================================
+    # ---- Internal — API calls ----
 
     def _call_api(self, provider: LLMProvider, messages: list[dict],
                   tools: list[dict] | None, tool_choice: str,
@@ -180,12 +176,10 @@ class LLMRouter:
                     chunk = json.loads(data_str)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
 
-                    # Text content
                     content = delta.get("content", "")
                     if content:
                         yield {"type": "text", "content": content}
 
-                    # Tool calls
                     for tc in delta.get("tool_calls", []):
                         idx = tc.get("index", 0)
                         if idx not in tool_calls_acc:
@@ -219,9 +213,7 @@ class LLMRouter:
         except Exception as e:
             yield {"type": "error", "content": f"[Stream error: {e}]"}
 
-    # ================================================================
-    #  Helpers
-    # ================================================================
+    # ---- Helpers ----
 
     def _extract_error(self, resp) -> str:
         try:
@@ -265,3 +257,5 @@ class LLMRouter:
             return finish == "tool_calls"
         except (KeyError, IndexError, TypeError):
             return False
+
+

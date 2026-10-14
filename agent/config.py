@@ -15,7 +15,7 @@ class LLMProvider:
     model: str
     max_tokens: int = 1024
     temperature: float = 0.7
-    timeout: int = 30
+    timeout: int = 15
     priority: int = 0   # lower = higher priority
     enabled: bool = True
 
@@ -46,6 +46,8 @@ class AgentConfig:
     knowledge_base_enabled: bool = True
     knowledge_base_top_k: int = 3
     knowledge_base_embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
+    knowledge_base_vector_db: dict = None
+    knowledge_base_embedding: dict = None
 
     @staticmethod
     def _load_dotenv():
@@ -124,6 +126,8 @@ class AgentConfig:
         kb_enabled = kb_cfg.get("enabled", True) if kb_cfg else True
         kb_top_k = kb_cfg.get("top_k", 3) if kb_cfg else 3
         kb_embed_model = kb_cfg.get("embedding_model", "paraphrase-multilingual-MiniLM-L12-v2") if kb_cfg else "paraphrase-multilingual-MiniLM-L12-v2"
+        kb_vector_db = kb_cfg.get("vector_db") or None if kb_cfg else None
+        kb_embedding = kb_cfg.get("embedding") or None if kb_cfg else None
 
         return cls(
             providers=sorted(providers, key=lambda p: p.priority),
@@ -133,6 +137,8 @@ class AgentConfig:
             knowledge_base_enabled=kb_enabled,
             knowledge_base_top_k=kb_top_k,
             knowledge_base_embedding_model=kb_embed_model,
+            knowledge_base_vector_db=kb_vector_db,
+            knowledge_base_embedding=kb_embedding,
         )
 
 

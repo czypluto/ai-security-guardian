@@ -38,9 +38,7 @@ from typing import Optional
 
 logger = logging.getLogger("Guardian.SelfAudit")
 
-# ================================================================
-#  Constants
-# ================================================================
+# ---- Constants ----
 
 # Packages that are ALWAYS suspicious — common in malware/botnets/RATs
 # These should never appear in any legitimate project
@@ -86,9 +84,7 @@ CODE_INJECTION_PATTERNS = [
     rb"shutil\.copy.*\.(exe|dll|sys)",  # binary planting
 ]
 
-# ================================================================
-#  Integrity Manifest
-# ================================================================
+# ---- Integrity Manifest ----
 
 class IntegrityManifest:
     """Load and verify a manifest of known-good file hashes."""
@@ -132,9 +128,7 @@ class IntegrityManifest:
         return self._loaded
 
 
-# ================================================================
-#  File Hasher
-# ================================================================
+# ---- File Hasher ----
 
 class FileHasher:
     """Compute and verify SHA256 hashes of project files."""
@@ -172,9 +166,7 @@ class FileHasher:
         return results
 
 
-# ================================================================
-#  Runtime Integrity Checker
-# ================================================================
+# ---- Runtime Integrity Checker ----
 
 class RuntimeChecker:
     """Check the running process for signs of tampering."""
@@ -249,9 +241,7 @@ class RuntimeChecker:
         }
 
 
-# ================================================================
-#  Code Injection Scanner
-# ================================================================
+# ---- Code Injection Scanner ----
 
 class CodeScanner:
     """Scan source files for injection patterns."""
@@ -290,9 +280,7 @@ class CodeScanner:
         return all_findings
 
 
-# ================================================================
-#  Config Guard
-# ================================================================
+# ---- Config Guard ----
 
 class ConfigGuard:
     """Verify config files haven't been tampered to redirect API calls."""
@@ -349,9 +337,7 @@ class ConfigGuard:
         }
 
 
-# ================================================================
-#  Dependency Auditor
-# ================================================================
+# ---- Dependency Auditor ----
 
 class DependencyAuditor:
     """Check pip packages for integrity and suspicious entries."""
@@ -421,9 +407,7 @@ class DependencyAuditor:
         }
 
 
-# ================================================================
-#  Network Self-Check
-# ================================================================
+# ---- Network Self-Check ----
 
 class NetworkSelfCheck:
     """Verify the guardian's own network connections are legitimate."""
@@ -512,12 +496,10 @@ class NetworkSelfCheck:
                 "detail": legitimate_connections[:10],
             }
         except Exception as e:
-            return {"error": str(e), "clean": True}
+            return {"error": str(e), "clean": None}
 
 
-# ================================================================
-#  Sandbox Integrity Test
-# ================================================================
+# ---- Sandbox Integrity Test ----
 
 class SandboxTester:
     """Verify the 6-layer sandbox is actually working by testing each layer."""
@@ -647,9 +629,7 @@ class SandboxTester:
         return results
 
 
-# ================================================================
-#  Main Self-Auditor
-# ================================================================
+# ---- Main Self-Auditor ----
 
 class SelfAuditor:
     """Unified self-audit engine for the AI Security Guardian."""
@@ -972,9 +952,7 @@ class SelfAuditor:
         return failures
 
 
-# ================================================================
-#  Convenience functions for tool registration
-# ================================================================
+# ---- Convenience functions for tool registration ----
 
 def run_full_audit() -> dict:
     """Run a complete self-audit. Returns the full report as a dict."""
@@ -999,9 +977,7 @@ def run_file_verification() -> dict:
     return auditor.verify_files()
 
 
-# ================================================================
-#  CLI entry point
-# ================================================================
+# ---- CLI entry point ----
 
 if __name__ == "__main__":
     import argparse
@@ -1058,7 +1034,7 @@ if __name__ == "__main__":
         result = auditor.verify_files()
     elif args.quick:
         result = auditor.quick_check()
-    elif args.full or True:  # Default: full audit
+    else:  # Default: full audit
         result = auditor.full_audit()
 
     if args.json:
@@ -1090,3 +1066,4 @@ if __name__ == "__main__":
                     print(f"     • [{issue.get('severity', '?')}] {issue.get('issue', str(issue))}")
 
             print("\n" + "=" * 60)
+

@@ -32,9 +32,7 @@ from .web_tools import web_fetch, web_search
 
 logger = logging.getLogger("Guardian.Tools")
 
-# ================================================================
-#  Tool Definition
-# ================================================================
+# ---- Tool Definition ----
 
 def _is_admin() -> bool:
     try:
@@ -81,9 +79,7 @@ class ToolDef:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
 
 
-# ================================================================
-#  Tool Registry
-# ================================================================
+# ---- Tool Registry ----
 
 class ToolRegistry:
     """Register and execute tools."""
@@ -119,9 +115,7 @@ class ToolRegistry:
         return json.dumps({"error": f"MCP tool '{name}' not connected"}, ensure_ascii=False)
 
 
-# ================================================================
-#  Built-in Tool Implementations
-# ================================================================
+# ---- Built-in Tool Implementations ----
 
 def _import_guardian_modules():
     """Lazy import guardian modules from pc_agent."""
@@ -228,9 +222,7 @@ def _check_command(command: str) -> dict:
     return sandbox.quick_check(command)
 
 
-# ================================================================
-#  Build default registry
-# ================================================================
+# ---- Build default registry ----
 
 def create_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
@@ -691,3 +683,4 @@ def create_tool_registry() -> ToolRegistry:
     ))
 
     return registry
+

@@ -73,9 +73,7 @@ class MCPClient:
         self._tools: dict[str, MCPTool] = {}
         self._connected = False
 
-    # ================================================================
-    #  Connect / Disconnect
-    # ================================================================
+    # ---- Connect / Disconnect ----
 
     def connect(self) -> bool:
         """Connect and handshake. Returns True on success."""
@@ -157,9 +155,7 @@ class MCPClient:
             self._proc = None
         self._tools.clear()
 
-    # ================================================================
-    #  Tool Discovery
-    # ================================================================
+    # ---- Tool Discovery ----
 
     def _discover_tools(self):
         resp = self._rpc_call("tools/list", {})
@@ -183,9 +179,7 @@ class MCPClient:
     def tools(self) -> dict[str, MCPTool]:
         return self._tools
 
-    # ================================================================
-    #  Tool Execution
-    # ================================================================
+    # ---- Tool Execution ----
 
     def call_tool(self, tool_name: str, arguments: dict) -> str:
         """Execute a tool on this MCP server. Returns JSON string."""
@@ -209,9 +203,7 @@ class MCPClient:
                 texts.append(item)
         return "\n".join(texts) if texts else json.dumps(resp["result"])
 
-    # ================================================================
-    #  JSON-RPC 2.0 Transport
-    # ================================================================
+    # ---- JSON-RPC 2.0 Transport ----
 
     def _rpc_call(self, method: str, params: dict) -> dict:
         """Send JSON-RPC 2.0 request and return parsed response."""
@@ -271,9 +263,7 @@ class MCPClient:
             return {"error": {"code": -32603, "message": str(e)}}
 
 
-# ================================================================
-#  Multi-Server Manager
-# ================================================================
+# ---- Multi-Server Manager ----
 
 class MCPManager:
     """Manage multiple MCP server connections."""
@@ -328,3 +318,5 @@ class MCPManager:
     @property
     def total_tools(self) -> int:
         return sum(len(c.tools) for c in self._clients.values())
+
+
