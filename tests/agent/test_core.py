@@ -20,9 +20,7 @@ from agent.config import AgentConfig, LLMProvider  # noqa: E402  需先 mock cty
 from agent.core import AgentCore  # noqa: E402
 from agent.tools import ToolDef, ToolRegistry  # noqa: E402
 
-# ================================================================
-#  Helpers
-# ================================================================
+# ---- Helpers ----
 
 def _make_minimal_config():
     return AgentConfig(
@@ -55,9 +53,7 @@ def _make_tool_registry():
     return registry
 
 
-# ================================================================
-#  AgentCore 初始化
-# ================================================================
+# ---- AgentCore 初始化 ----
 
 class TestAgentCoreInit:
     """AgentCore.__init__() 和各组件集成."""
@@ -118,9 +114,7 @@ class TestAgentCoreInit:
         assert "test-provider" in active
 
 
-# ================================================================
-#  _build_system_prompt
-# ================================================================
+# ---- _build_system_prompt ----
 
 class TestSystemPrompt:
     """系统提示词构建."""
@@ -138,9 +132,7 @@ class TestSystemPrompt:
         assert "scan_network" in prompt
 
 
-# ================================================================
-#  run() — ReAct Loop 基本行为
-# ================================================================
+# ---- run() — ReAct Loop 基本行为 ----
 
 class TestRunBasic:
     """run() 基本行为."""
@@ -211,9 +203,7 @@ class TestRunBasic:
                 assert isinstance(result, str)
 
 
-# ================================================================
-#  run_stream()
-# ================================================================
+# ---- run_stream() ----
 
 class TestRunStream:
     """流式输出 ReAct 循环."""
@@ -306,9 +296,7 @@ class TestRunStream:
             assert len(error_events) >= 1
 
 
-# ================================================================
-#  MCP 工具集成
-# ================================================================
+# ---- MCP 工具集成 ----
 
 class TestMCPIntegration:
     """MCP 工具合并."""
@@ -335,9 +323,7 @@ class TestMCPIntegration:
         assert tool is not None
 
 
-# ================================================================
-#  Conversation Management
-# ================================================================
+# ---- Conversation Management ----
 
 class TestConversationManagement:
     """对话历史管理."""
@@ -362,3 +348,4 @@ class TestConversationManagement:
         assert agent._kb_enabled is False
         result = agent.save_conversation()
         assert result is None
+

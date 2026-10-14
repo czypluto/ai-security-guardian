@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-# ================================================================
-#  Config fixtures
-# ================================================================
+# ---- Config fixtures ----
 
 @pytest.fixture
 def mock_provider():
@@ -42,9 +40,7 @@ def mock_config(mock_provider):
     )
 
 
-# ================================================================
-#  Tool fixtures
-# ================================================================
+# ---- Tool fixtures ----
 
 @pytest.fixture
 def tool_registry():
@@ -67,9 +63,7 @@ def tool_registry():
     return registry
 
 
-# ================================================================
-#  Temp file fixtures
-# ================================================================
+# ---- Temp file fixtures ----
 
 @pytest.fixture
 def temp_yaml_config(tmp_path):
@@ -110,3 +104,4 @@ def temp_env_file(tmp_path):
     with open(env_path, "w", encoding="utf-8") as f:
         f.write("DEEPSEEK_API_KEY=sk-test-key-from-env-file\n")
     return str(env_path)
+

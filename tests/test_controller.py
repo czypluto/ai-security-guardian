@@ -6,6 +6,8 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # 将 pc_agent 加入路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'pc_agent'))
 
@@ -45,51 +47,15 @@ class TestSecurityLevelCalculation:
              }):
             self.controller = GuardianController()
 
-    def test_danger_when_firewall_off(self):
-        result = self.controller._calculate_security_level(
-            threats=[], suspicious_ips=0, suspicious_procs=0,
-            firewall_on=False, defender_on=True
-        )
-        assert result == 'danger'
-
-    def test_danger_when_defender_off(self):
-        result = self.controller._calculate_security_level(
-            threats=[], suspicious_ips=0, suspicious_procs=0,
-            firewall_on=True, defender_on=False
-        )
-        assert result == 'danger'
-
-    def test_danger_with_3_plus_threats(self):
-        result = self.controller._calculate_security_level(
-            threats=['t1', 't2', 't3'], suspicious_ips=0, suspicious_procs=0,
-            firewall_on=True, defender_on=True
-        )
-        assert result == 'danger'
-
-    def test_danger_with_5_plus_suspicious_ips(self):
-        result = self.controller._calculate_security_level(
-            threats=[], suspicious_ips=5, suspicious_procs=0,
-            firewall_on=True, defender_on=True
-        )
-        assert result == 'danger'
-
-    def test_warning_with_1_threat(self):
-        result = self.controller._calculate_security_level(
-            threats=['t1'], suspicious_ips=0, suspicious_procs=0,
-            firewall_on=True, defender_on=True
-        )
-        assert result == 'warning'
-
-    def test_warning_with_suspicious_proc(self):
-        result = self.controller._calculate_security_level(
-            threats=[], suspicious_ips=0, suspicious_procs=1,
-            firewall_on=True, defender_on=True
-        )
-        assert result == 'warning'
-
-    def test_safe_when_all_clear(self):
-        result = self.controller._calculate_security_level(
-            threats=[], suspicious_ips=0, suspicious_procs=0,
-            firewall_on=True, defender_on=True
-        )
-        assert result == 'safe'
+    @pytest.mark.parametrize("kwargs,expected", [
+        (dict(threats=[], suspicious_ips=0, suspicious_procs=0, firewall_on=False, defender_on=True), 'danger'),
+        (dict(threats=[], suspicious_ips=0, suspicious_procs=0, firewall_on=True, defender_on=False), 'danger'),
+        (dict(threats=['t1', 't2', 't3'], suspicious_ips=0, suspicious_procs=0, firewall_on=True, defender_on=True), 'danger'),
+        (dict(threats=[], suspicious_ips=5, suspicious_procs=0, firewall_on=True, defender_on=True), 'danger'),
+        (dict(threats=['t1'], suspicious_ips=0, suspicious_procs=0, firewall_on=True, defender_on=True), 'warning'),
+        (dict(threats=[], suspicious_ips=0, suspicious_procs=1, firewall_on=True, defender_on=True), 'warning'),
+        (dict(threats=[], suspicious_ips=0, suspicious_procs=0, firewall_on=True, defender_on=True), 'safe'),
+    ])
+    def test_security_level_calculation(self, kwargs, expected):
+        result = self.controller._calculate_security_level(**kwargs)
+        assert result == expected

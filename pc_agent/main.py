@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-============================================================
- AI 网络安全管家 - PC Agent 主程序
- AI Network Security Guardian - Main Entry Point
-============================================================
+AI 网络安全管家 - PC Agent 主程序
+AI Network Security Guardian - Main Entry Point
 
-启动后会自动:
+启动后自动:
  1. 监控 Windows 安全状态
  2. 检测网络威胁
  3. 扫描可疑进程
@@ -48,8 +46,7 @@ try:
 except ImportError:
     HAS_GUI = False
 
-# ==================== 日志 ====================
-
+# 日志
 def setup_logging(config: dict):
     """配置日志系统"""
     try:
@@ -97,8 +94,7 @@ def setup_logging(config: dict):
     return logging.getLogger('Guardian')
 
 
-# ==================== 主控制器 ====================
-
+# 主控制器
 class GuardianController:
     """安全管家主控制器"""
 
@@ -231,9 +227,7 @@ class GuardianController:
         self.logger.info("=" * 50)
         self.running = True
 
-        # ================================================================
-        #  启动前自审计 — 先保证自己没被篡改，再保护别人
-        # ================================================================
+        # ---- 启动前自审计 — 先保证自己没被篡改，再保护别人 ----
         self._run_startup_integrity_check()
 
         # 连接设备
@@ -274,7 +268,7 @@ class GuardianController:
         t.start()
         return t
 
-    # ==================== 扫描循环 ====================
+    # 扫描循环
 
     def _scan_loop(self):
         """主扫描循环"""
@@ -512,8 +506,7 @@ class GuardianController:
             return []
 
 
-# ==================== 入口 ====================
-
+# 入口
 def check_admin_privileges(logger):
     """检查是否以管理员权限运行"""
     import ctypes
@@ -590,3 +583,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+

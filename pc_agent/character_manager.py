@@ -316,7 +316,6 @@ class CharacterManager:
         """生成发送给设备的角色指令"""
         commands = []
 
-        # 表情
         exp = self.get_expression(state)
         if exp != self._last_expression:
             commands.append({
@@ -325,7 +324,6 @@ class CharacterManager:
             })
             self._last_expression = exp
 
-        # 台词
         line = self.get_line(state)
         if line:
             commands.append({

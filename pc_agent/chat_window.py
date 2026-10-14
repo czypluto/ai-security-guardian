@@ -1,19 +1,18 @@
 """
-============================================================
- AI 安全对话窗口 - Chat Window
- 极简清爽风格 · 与 desktop_gui 统一设计语言
-============================================================
+AI 安全对话窗口 - Chat Window
+与 desktop_gui 同一套设计语言
 
 功能:
-  - ReAct 智能对话: Think -> Act -> Observe -> Respond
-  - 工具调用: 一键调用安全扫描/威胁检测/漏洞检查
-  - 流式输出: LLM 回复逐字显示
-  - 对话历史: 保持上下文连贯性
+  - ReAct 智能对话 (Think -> Act -> Observe -> Respond)
+  - 工具调用 (安全扫描/威胁检测/漏洞检查)
+  - 流式输出
+  - 对话历史
 """
 
 import json
 import logging
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -68,15 +67,13 @@ except ImportError:
     HAS_ROUTER = False
 
 try:
-    from agent.knowledge_base import get_knowledge_base
+    import agent.knowledge_base as _kb_module  # noqa: F401  仅探测模块可用性
     HAS_KB = True
 except ImportError:
     HAS_KB = False
 
 
-# ============================================================
-# 颜色常量 — 与 desktop_gui 保持一致的极简清爽调色板
-# ============================================================
+# 颜色常量（与 desktop_gui 一致）
 COLORS = {
     'bg_primary':     '#0d0f12',   # 主背景
     'bg_card':        '#15181d',   # 卡片背景
@@ -99,9 +96,7 @@ COLORS = {
 }
 
 
-# ============================================================
 # AI 安全管家系统提示词 (ReAct + Tools)
-# ============================================================
 SECURITY_AGENT_PROMPT = """你是"安小盾"，一个 AI 网络安全管家，运行在用户的 Windows PC 上。
 
 ## 身份与性格
@@ -131,9 +126,7 @@ SECURITY_AGENT_PROMPT = """你是"安小盾"，一个 AI 网络安全管家，�
 6. 如果检测到威胁，说明严重等级和建议的应对措施"""
 
 
-# ============================================================
 # LLM ReAct 后台工作线程 — Think -> Act -> Observe -> Respond
-# ============================================================
 class LLMWorker(QThread):
     """ReAct 循环: LLM 可以调用安全工具来回答用户问题。
     每个工具调用和结果都实时显示在聊天界面。"""
@@ -146,12 +139,14 @@ class LLMWorker(QThread):
     TIMEOUT_SECONDS = 60
 
     def __init__(self, router, messages: list, tool_schemas: list,
-                 tool_registry, parent=None):
+                 tool_registry, parent=None, kb=None, user_message=""):
         super().__init__(parent)
         self.router = router          # LLMRouter 实例
         self.messages = list(messages) # 完整消息历史 (会被修改)
         self.tool_schemas = tool_schemas
         self.tool_registry = tool_registry  # ToolRegistry 实例
+        self.kb = kb                  # 知识库（在 worker 线程构建上下文）
+        self.user_message = user_message
         self._start_time = 0
 
     def run(self):
@@ -173,10 +168,40 @@ class LLMWorker(QThread):
             return
 
         try:
+            self._build_kb_context()
             self._react_loop()
         except Exception as e:
             import traceback
             self.finished.emit(f"AI 异常: {e}\n{traceback.format_exc()}", False)
+
+    def _build_kb_context(self):
+        """在 worker 线程构建知识库上下文（避免阻塞 GUI 线程）。
+
+        带时间预算：Ollama 冷启动加载嵌入模型可能耗时 20s+（urlopen 超时 20s），
+        绝不能因此拖慢首条回复。4s 内构建不出来就放弃 KB 上下文，直接走 LLM。
+        """
+        if not self.kb or not self.user_message:
+            return
+
+        result = []
+        done = threading.Event()
+
+        def _build():
+            try:
+                result.append(self.kb.build_context(self.user_message, top_k=3))
+            except Exception:
+                pass
+            finally:
+                done.set()
+
+        # 独立守护线程 + 超时等待；超时后不阻塞（遗留线程在后台自行结束）
+        threading.Thread(target=_build, daemon=True).start()
+        if not done.wait(timeout=4):
+            return
+
+        kb_context = result[0] if result else None
+        if kb_context:
+            self.messages.insert(1, {"role": "system", "content": kb_context})
 
     def _react_loop(self):
         """ReAct 主循环: Think → Act → Observe → Repeat"""
@@ -195,6 +220,7 @@ class LLMWorker(QThread):
             # 调用 LLM (流式, 带 tool schemas)
             text_chunks = []
             tool_calls_received = []
+            stream_error = None
 
             for event in self.router.chat_stream(
                 messages=self.messages,
@@ -214,11 +240,15 @@ class LLMWorker(QThread):
                     tool_calls_received.append(event["tool_call"])
 
                 elif etype == "error":
-                    # 静默跳过流式错误
-                    pass
+                    stream_error = event.get("content", "AI 服务异常")
+
+            # 网络/服务错误且无任何输出 → 立即失败，不再重试（避免多次 30s 超时表现成卡死）
+            if stream_error and not text_chunks and not tool_calls_received:
+                self.finished.emit(f"⚠️ {stream_error}\n\n请检查网络连接后重试。", False)
+                return
 
             if tool_calls_received:
-                # --- Act: 执行工具 ---
+                # Act: 执行工具
                 # 规范化 tool_calls 格式 (移除内部字段 arguments_parsed, 添加 type)
                 clean_tool_calls = []
                 for tc in tool_calls_received:
@@ -272,7 +302,7 @@ class LLMWorker(QThread):
                 # 继续循环让 LLM 处理工具结果
                 continue
 
-            # --- Respond: 没有工具调用, 返回最终文本 ---
+            # Respond: 没有工具调用, 返回最终文本
             full_text = "".join(text_chunks)
             if full_text.strip():
                 self.finished.emit(full_text.strip(), True)
@@ -285,9 +315,7 @@ class LLMWorker(QThread):
             self.finished.emit("[已达到最大工具调用次数，请重新提问]", False)
 
 
-# ============================================================
-# 消息气泡组件 — 极简风格
-# ============================================================
+# 消息气泡组件
 class ChatBubble(QFrame):
     """单条聊天消息气泡 — 无边框，纯色块区分角色"""
 
@@ -407,11 +435,9 @@ class ChatBubble(QFrame):
         return self._text
 
 
-# ============================================================
-# 快速操作按钮 — 极简药丸样式
-# ============================================================
+# 快速操作按钮
 class QuickActionBar(QFrame):
-    """快速操作按钮栏 — 扁平极简"""
+    """快速操作按钮栏"""
 
     action_clicked = pyqtSignal(str)
 
@@ -468,9 +494,7 @@ class QuickActionBar(QFrame):
         """
 
 
-# ============================================================
-# 输入区域 — 极简
-# ============================================================
+# 输入区域
 class ChatInputBar(QFrame):
     """聊天输入框 + 发送按钮"""
 
@@ -559,9 +583,7 @@ class ChatInputBar(QFrame):
         self._send_btn.setEnabled(enabled)
 
 
-# ============================================================
-# 聊天窗口主体 — 极简清爽版
-# ============================================================
+# 聊天窗口主体
 class ChatWindow(QDialog):
     """AI 安全管家对话窗口"""
 
@@ -581,9 +603,13 @@ class ChatWindow(QDialog):
         self._tool_registry = None
         self._tool_schemas = None
 
-        # Knowledge base (延迟加载)
+        # Knowledge base — 后台线程加载。
+        # 向量库 Milvus/Qdrant 与嵌入 vLLM 均为网络客户端，线程安全；
+        # 服务不可达时 get_knowledge_base() 自动降级（TF-IDF/关键词），绝不崩溃。
         self._kb = None
         self._kb_loaded = False
+        if HAS_KB:
+            self._ensure_kb()
 
         self._build_ui()
         self._add_welcome_message()
@@ -593,7 +619,14 @@ class ChatWindow(QDialog):
         self._watchdog.timeout.connect(self._watchdog_check)
         self._watchdog.start(5000)
 
-    # ---- UI 构建 ----
+        # 流式输出节流 — 累积文本后每 ~60ms 刷新一次气泡。
+        # 逐 token setText() 会触发全量重排版，把主线程拖死（表现为对话时卡死）。
+        self._stream_flush_timer = QTimer(self)
+        self._stream_flush_timer.setSingleShot(True)
+        self._stream_flush_timer.setInterval(60)
+        self._stream_flush_timer.timeout.connect(self._flush_streaming_text)
+
+    # UI 构建
     def _build_ui(self):
         self.setWindowTitle('AI 安全对话')
         self.setMinimumSize(720, 600)
@@ -604,7 +637,7 @@ class ChatWindow(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ---- 标题栏 ----
+        # 标题栏
         header = QFrame()
         header.setObjectName('chatHeader')
         header.setFixedHeight(52)
@@ -671,12 +704,12 @@ class ChatWindow(QDialog):
 
         main_layout.addWidget(header)
 
-        # ---- 快速操作栏 ----
+        # 快速操作栏
         action_bar = QuickActionBar()
         action_bar.action_clicked.connect(self._on_quick_action)
         main_layout.addWidget(action_bar)
 
-        # ---- 消息列表区域 ----
+        # 消息列表区域
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
@@ -722,12 +755,12 @@ class ChatWindow(QDialog):
 
         main_layout.addWidget(scroll_area, stretch=1)
 
-        # ---- 输入栏 ----
+        # 输入栏
         self._input_bar = ChatInputBar()
         self._input_bar.send_message.connect(self._on_user_message)
         main_layout.addWidget(self._input_bar)
 
-    # ---- 欢迎消息 ----
+    # 欢迎消息
     def _add_welcome_message(self):
         try:
             llm_available = self.controller.llm.available_count > 0
@@ -759,7 +792,7 @@ class ChatWindow(QDialog):
 
         self._add_message(welcome, 'ai')
 
-    # ---- 消息管理 ----
+    # 消息管理
     def _add_message(self, text: str, role: str) -> ChatBubble:
         """添加消息到聊天区域"""
         if self._msg_layout.count() > 0:
@@ -803,7 +836,7 @@ class ChatWindow(QDialog):
         self._add_welcome_message()
 
     def _save_to_kb(self):
-        """Save current conversation to knowledge base (with user confirmation)."""
+        """保存当前对话到知识库（需用户确认）。"""
         self._ensure_kb()
         if not self._kb or not self._full_history:
             return
@@ -832,7 +865,7 @@ class ChatWindow(QDialog):
         except Exception as e:
             self.logger.debug(f"保存对话失败: {e}")
 
-    # ---- 用户输入处理 ----
+    # 用户输入处理
     def _on_user_message(self, text: str):
         if self._is_processing:
             return
@@ -842,19 +875,39 @@ class ChatWindow(QDialog):
         self._input_bar.set_enabled(False)
         self._call_ai(text)
 
-    # ---- KB 延迟加载 ----
+    # KB 延迟加载（后台线程，网络客户端线程安全）
     def _ensure_kb(self):
-        """延迟加载知识库，避免阻塞 UI 线程"""
-        if self._kb_loaded or not HAS_KB:
+        """延迟加载知识库，避免阻塞 UI 线程。"""
+        if self._kb is not None or self._kb_loaded:
             return
-        self._kb_loaded = True
-        try:
-            self._kb = get_knowledge_base()
-            self.logger.info(f"知识库已加载: {self._kb.conversation_count} 对话")
-        except Exception as e:
-            self.logger.debug(f"知识库初始化跳过: {e}")
+        self._kb_loaded = True  # 防止重复启动
+        threading.Thread(target=self._kb_load_worker, daemon=True).start()
 
-    # ---- Agent Tools 延迟初始化 ----
+    def _kb_load_worker(self):
+        """后台加载 KB：vLLM 嵌入探测 + Milvus/Qdrant 探活，均带短超时。
+
+        服务不可达时 get_knowledge_base() 自动降级（TF-IDF / 关键词检索），
+        绝不让 GUI 卡住或崩溃。
+        """
+        try:
+            from agent.config import AgentConfig
+            from agent.knowledge_base import get_knowledge_base
+
+            cfg = AgentConfig.from_config_file(str(Path(__file__).parent / "config.yaml"))
+            kb = get_knowledge_base(
+                persist_dir=cfg.knowledge_base_dir or None,
+                vector_db_cfg=cfg.knowledge_base_vector_db,
+                embedding_cfg=cfg.knowledge_base_embedding,
+            )
+            self._kb = kb  # GIL 原子赋值
+            self.logger.info(
+                f"知识库已加载: {kb.conversation_count} 对话, {kb.count} 向量, "
+                f"嵌入={kb._embed_type}, 向量库={kb._vector_db_name}")
+        except Exception as e:
+            self.logger.debug(f"知识库加载失败: {e}")
+            self._kb = None
+
+    # Agent Tools 延迟初始化
     def _ensure_tools(self):
         """延迟加载 agent ToolRegistry 和 tool schemas"""
         if self._tool_registry is not None:
@@ -885,7 +938,7 @@ class ChatWindow(QDialog):
             pass
         return None
 
-    # ---- AI 调用 (ReAct) ----
+    # AI 调用 (ReAct)
     def _call_ai(self, user_message: str):
         router = self._get_router()
 
@@ -895,21 +948,11 @@ class ChatWindow(QDialog):
             {"role": "system", "content": SECURITY_AGENT_PROMPT},
         ]
 
-        # Knowledge base context
-        self._ensure_kb()
-        if self._kb:
-            try:
-                kb_context = self._kb.build_context(user_message, top_k=3)
-                if kb_context:
-                    messages_for_llm.append({"role": "system", "content": kb_context})
-            except Exception:
-                pass
-
         messages_for_llm.extend(conversation_for_llm)
 
         # 加载工具
         self._ensure_tools()
-        tool_schemas = self._tool_schemas if isinstance(self._tool_registry, object) and self._tool_registry else None
+        tool_schemas = self._tool_schemas if self._tool_registry else None
         tool_registry = self._tool_registry if self._tool_registry else None
 
         # UI 占位气泡 (不加入对话历史)
@@ -917,7 +960,8 @@ class ChatWindow(QDialog):
         self._streaming_text = ""
 
         self._worker = LLMWorker(
-            router, messages_for_llm, tool_schemas, tool_registry, self)
+            router, messages_for_llm, tool_schemas, tool_registry, self,
+            kb=self._kb, user_message=user_message)
         self._worker.streaming.connect(self._on_stream_chunk)
         self._worker.tool_call_signal.connect(self._on_tool_call)
         self._worker.tool_result_signal.connect(self._on_tool_result)
@@ -926,6 +970,12 @@ class ChatWindow(QDialog):
 
     def _on_stream_chunk(self, chunk: str):
         self._streaming_text += chunk
+        if self._streaming_bubble and not self._stream_flush_timer.isActive():
+            # 只累积文本，重排版/滚动交给定时器批量执行（~16Hz）
+            self._stream_flush_timer.start()
+
+    def _flush_streaming_text(self):
+        """定时批量刷新流式气泡文本（节流后的实际渲染点）。"""
         if self._streaming_bubble:
             self._update_bubble_text(self._streaming_bubble, self._streaming_text)
             self._scroll_to_bottom()
@@ -951,6 +1001,9 @@ class ChatWindow(QDialog):
             bubble._text = new_text
 
     def _on_ai_response(self, response_text: str, success: bool):
+        # 停掉节流定时器，用最终文本收尾
+        self._stream_flush_timer.stop()
+
         # 更新占位气泡
         if self._streaming_bubble:
             self._update_bubble_text(self._streaming_bubble, response_text)
@@ -970,7 +1023,7 @@ class ChatWindow(QDialog):
         self._input_bar.set_enabled(True)
         self._scroll_to_bottom()
 
-    # ---- 快速操作 ----
+    # 快速操作
     def _on_quick_action(self, action_id: str):
         if self._is_processing:
             return
@@ -1170,7 +1223,7 @@ class ChatWindow(QDialog):
         """AI 生成安全分析报告 (使用工具获取实时数据)"""
         router = self._get_router()
         self._ensure_tools()
-        tool_schemas = self._tool_schemas if isinstance(self._tool_registry, object) and self._tool_registry else None
+        tool_schemas = self._tool_schemas if self._tool_registry else None
         tool_registry = self._tool_registry if self._tool_registry else None
 
         state = self.controller.get_state()
@@ -1228,7 +1281,7 @@ class ChatWindow(QDialog):
         """获取安全修复建议 (使用工具分析)"""
         router = self._get_router()
         self._ensure_tools()
-        tool_schemas = self._tool_schemas if isinstance(self._tool_registry, object) and self._tool_registry else None
+        tool_schemas = self._tool_schemas if self._tool_registry else None
         tool_registry = self._tool_registry if self._tool_registry else None
 
         state = self.controller.get_state()
@@ -1288,7 +1341,7 @@ class ChatWindow(QDialog):
                 fix_lines.append('\n开启 Defender: 安全中心 -> 病毒防护')
             self._add_message('\n'.join(fix_lines), 'ai')
 
-    # ---- 看门狗 ----
+    # 看门狗
     def _watchdog_check(self):
         """防止 _is_processing 永久卡死"""
         if self._is_processing and self._worker:
@@ -1301,7 +1354,7 @@ class ChatWindow(QDialog):
                         self._worker.terminate()
                     self._on_ai_response("AI 响应超时，请稍后重试。", False)
 
-    # ---- 窗口事件 ----
+    # 窗口事件
     def closeEvent(self, event):
         self._watchdog.stop()
         self._save_to_kb()
@@ -1311,9 +1364,7 @@ class ChatWindow(QDialog):
         super().closeEvent(event)
 
 
-# ============================================================
 # 独立测试
-# ============================================================
 if __name__ == '__main__':
     import random
 
@@ -1371,3 +1422,4 @@ if __name__ == '__main__':
     chat = ChatWindow(mc)
     chat.show()
     app.exec_()
+

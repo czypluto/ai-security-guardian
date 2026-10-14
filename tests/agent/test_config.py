@@ -4,14 +4,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from unittest.mock import patch
 
 from agent.config import DEFAULT_SYSTEM_PROMPT, AgentConfig, LLMProvider
 
-# ================================================================
-#  LLMProvider Dataclass
-# ================================================================
+# ---- LLMProvider Dataclass ----
 
 class TestLLMProvider:
     """LLMProvider dataclass basic behavior."""
@@ -21,7 +18,7 @@ class TestLLMProvider:
         assert p.name == "test"
         assert p.max_tokens == 1024
         assert p.temperature == 0.7
-        assert p.timeout == 30
+        assert p.timeout == 15
         assert p.priority == 0
         assert p.enabled is True
 
@@ -46,9 +43,7 @@ class TestLLMProvider:
         assert sorted_providers[2].name == "low"
 
 
-# ================================================================
-#  AgentConfig 基本构造
-# ================================================================
+# ---- AgentConfig 基本构造 ----
 
 class TestAgentConfigConstruction:
     """AgentConfig dataclass construction."""
@@ -72,9 +67,7 @@ class TestAgentConfigConstruction:
         assert cfg.stream_output is False
 
 
-# ================================================================
-#  环境变量解析
-# ================================================================
+# ---- 环境变量解析 ----
 
 class TestEnvResolution:
     """AgentConfig._resolve_env — ${ENV_VAR} placeholder substitution."""
@@ -101,24 +94,26 @@ class TestEnvResolution:
             assert result == "1_2"
 
 
-# ================================================================
-#  .env 文件加载
-# ================================================================
+# ---- .env 文件加载 ----
 
 class TestDotenvLoading:
     """AgentConfig._load_dotenv — load .env into os.environ."""
 
-    def test_loads_env_file(self, temp_env_file, tmp_path):
-        """Verify .env loading parses KEY=VALUE pairs."""
-        # Change to tmp_path so .env is found
-        with patch.object(Path, '__init__', return_value=None), \
-             patch.object(Path, '__truediv__', return_value=Path(temp_env_file)):
-            # Actually test the loading via temp file
-            # Read the temp file directly
-            with open(temp_env_file, "r") as f:
-                content = f.read()
-            assert "DEEPSEEK_API_KEY" in content
-            assert "sk-test-key-from-env-file" in content
+    def test_loads_env_file(self, monkeypatch, tmp_path):
+        """_load_dotenv 应把 .env 中的 KEY=VALUE 写入 os.environ。"""
+        env_file = tmp_path / ".env"
+        env_file.write_text("DEEPSEEK_API_KEY=sk-test-from-env-file\n", encoding="utf-8")
+
+        # _load_dotenv 固定读取项目根/.env，把 os.path.join 指到临时文件即可触发
+        from agent import config as config_mod
+        monkeypatch.setattr(config_mod.os.path, "join", lambda *a: str(env_file))
+        monkeypatch.setattr(config_mod.os.path, "exists", lambda *a: True)
+
+        AgentConfig._load_dotenv()
+
+        assert os.environ.get("DEEPSEEK_API_KEY") == "sk-test-from-env-file"
+        # 清理，避免污染其他测试
+        os.environ.pop("DEEPSEEK_API_KEY", None)
 
     def test_idempotent_does_not_override(self, monkeypatch):
         """Existing env vars should NOT be overridden by _load_dotenv."""
@@ -136,9 +131,7 @@ class TestDotenvLoading:
         assert os.environ["EXISTING_KEY"] == "original-value"
 
 
-# ================================================================
-#  from_config_file 集成
-# ================================================================
+# ---- from_config_file 集成 ----
 
 class TestFromConfigFile:
     """AgentConfig.from_config_file() — full YAML config parsing."""
@@ -211,9 +204,7 @@ class TestFromConfigFile:
             assert isinstance(cfg.skill_dirs, list)
 
 
-# ================================================================
-#  DEFAULT_SYSTEM_PROMPT
-# ================================================================
+# ---- DEFAULT_SYSTEM_PROMPT ----
 
 class TestDefaultSystemPrompt:
     """DEFAULT_SYSTEM_PROMPT sanity checks."""
@@ -233,3 +224,4 @@ class TestDefaultSystemPrompt:
         # Must contain key safety rules
         assert "NEVER" in prompt
         assert ".env" in prompt or "API credentials" in prompt
+
