@@ -64,3 +64,6 @@ coverage.xml
 # 本地生成的报告/产物（含真实个人信息）
 *实训报告*.docx
 insert_diagrams.py
+
+# 容器数据卷（Qdrant 预分配的稀疏文件，工作区 593MB，不该入库）
+scripts/vector_db/volumes/
