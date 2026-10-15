@@ -126,7 +126,12 @@ class AgentConfig:
         kb_enabled = kb_cfg.get("enabled", True) if kb_cfg else True
         kb_top_k = kb_cfg.get("top_k", 3) if kb_cfg else 3
         kb_embed_model = kb_cfg.get("embedding_model", "paraphrase-multilingual-MiniLM-L12-v2") if kb_cfg else "paraphrase-multilingual-MiniLM-L12-v2"
-        kb_vector_db = kb_cfg.get("vector_db") or None if kb_cfg else None
+        # 默认走进程内向量库：零依赖、不用起容器。
+        # 这里给的是**代码级默认**而不是只写在 config.yaml 里 ——
+        # pc_agent/config.yaml 被 .gitignore 忽略且仓库里没有模板，
+        # 新克隆下来可能根本没有这个文件；只改配置的话"默认 local"不会真正生效。
+        # 配置里显式写了 vector_db 就以配置为准（想切回 milvus/qdrant 直接改配置）。
+        kb_vector_db = (kb_cfg.get("vector_db") if kb_cfg else None) or {"provider": "local"}
         kb_embedding = kb_cfg.get("embedding") or None if kb_cfg else None
 
         return cls(

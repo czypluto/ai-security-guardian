@@ -302,7 +302,8 @@ class ConversationStore:
 class KnowledgeBase:
     """本地知识库 — 语义检索历史对话。
 
-    向量存于 Milvus/Qdrant；Markdown 始终存于本地。
+    向量存于可插拔的 VectorStore（默认**进程内**，可选 Milvus/Qdrant）；
+    Markdown 始终存于本地，是事实源。
     向量库不可用时自动降级为关键词检索，绝不阻塞/崩溃。
     """
 
@@ -331,10 +332,10 @@ class KnowledgeBase:
         # Conversation store (Markdown，永远可用)
         self.store = ConversationStore(self.conversations_dir)
 
-        # Embedding (vLLM 优先，TF-IDF 兜底)
+        # Embedding（优先本地嵌入服务；不可用时降级）
         self._embed_fn, self._embed_type = _create_embedding_fn(embedding_cfg)
 
-        # 向量库 (Milvus 主 / Qdrant 兜底；均不可达时 None)
+        # 向量库（默认进程内；可选 Milvus/Qdrant；全不可用时为 None）
         from .vector_store import create_vector_store
         self._store = create_vector_store(vector_db_cfg)
         self._store_ready = (self._store is not None
