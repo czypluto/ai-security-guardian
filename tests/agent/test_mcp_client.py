@@ -7,6 +7,7 @@
 import io
 import json
 import sys
+import weakref
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -120,6 +121,60 @@ def test_rpc_stdio_errors_when_process_not_running():
     c._proc = None
     resp = c._rpc_stdio({"jsonrpc": "2.0", "id": 1, "method": "x"})
     assert resp["error"]["code"] == -32603
+
+
+# ---- 退出收尾 ----
+# 背景：实测（Windows）父进程正常退出**带不走**子进程，而 disconnect_all()
+# 此前没有任何调用点、也没有 atexit 钩子 —— 每跑一次应用漏一组 MCP 服务。
+# 它不是死代码，是漏了调用。
+
+def test_disconnect_all_is_safe_with_no_clients():
+    from agent.mcp_client import MCPManager
+    MCPManager().disconnect_all()          # 不得抛错
+
+
+def test_manager_registers_itself_for_exit_cleanup():
+    from agent import mcp_client
+    from agent.mcp_client import MCPManager
+
+    assert mcp_client._cleanup_registered, "应当已注册 atexit 回调"
+    m = MCPManager()
+    assert m in mcp_client._live_managers, "新建的 manager 应当进入存活集合"
+
+
+def test_live_set_does_not_pin_managers_alive():
+    """用 WeakSet 而不是逐个 register 绑定方法 —— 否则 AgentCore 反复创建时
+    每个实例都会被 atexit 强引用到进程结束（那是另一种泄漏）。
+    这里用弱引用语义断言：对象被回收后不再留在集合里。"""
+    import gc
+    from agent import mcp_client
+    from agent.mcp_client import MCPManager
+
+    m = MCPManager()
+    ref = weakref.ref(m)
+    assert m in mcp_client._live_managers
+    del m
+    gc.collect()
+    assert ref() is None, "manager 应当可被回收"
+    assert not any(x is None for x in mcp_client._live_managers)
+
+
+def test_disconnect_all_live_closes_connected_managers():
+    from agent import mcp_client
+    from agent.mcp_client import MCPManager
+
+    class _FakeClient:
+        def __init__(self):
+            self.closed = False
+
+        def disconnect(self):
+            self.closed = True
+
+    m = MCPManager()
+    fc = _FakeClient()
+    m._clients["x"] = fc
+    mcp_client._disconnect_all_live()
+    assert fc.closed and not m._clients
 
 
 # ---- 协议版本 ----

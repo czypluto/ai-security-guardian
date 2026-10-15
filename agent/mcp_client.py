@@ -25,10 +25,12 @@ They CAN execute arbitrary code — only connect to trusted servers.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
 import subprocess
+import weakref
 import threading
 import urllib.error
 import urllib.request
@@ -340,11 +342,41 @@ class MCPClient:
 
 # ---- Multi-Server Manager ----
 
+# 进程退出时收尾 MCP 子进程。
+#
+# 为什么必须有：实测（Windows）**父进程正常退出带不走子进程** ——
+# 起一个 Popen 子进程、父进程正常结束，2 秒后子进程仍然存活。
+# 而 `disconnect_all()` 在此之前**没有任何调用点**，也没有 atexit / shutdown 钩子，
+# 于是每跑一次应用就漏一组 MCP 服务，跨重启累积。
+# （顺带一提：这条是在"去删看起来是死代码的 disconnect_all"时才发现的 ——
+#   它不是死代码，是漏了调用。）
+#
+# 为什么用 WeakSet 而不是逐个 atexit.register(self.mcp.disconnect_all)：
+# `AgentCore` 会被反复创建（光测试里就 20+ 次），注册绑定方法会让每个实例
+# 被强引用到进程结束 —— 那是另一种泄漏。WeakSet 不持有对象，
+# 且全局只注册一个回调。
+_live_managers: "weakref.WeakSet[MCPManager]" = weakref.WeakSet()
+_cleanup_registered = False
+
+
+def _disconnect_all_live() -> None:
+    for mgr in list(_live_managers):
+        try:
+            mgr.disconnect_all()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("退出时断开 MCP 服务失败: %s", e)
+
+
 class MCPManager:
     """Manage multiple MCP server connections."""
 
     def __init__(self):
         self._clients: dict[str, MCPClient] = {}
+        global _cleanup_registered
+        _live_managers.add(self)
+        if not _cleanup_registered:
+            atexit.register(_disconnect_all_live)
+            _cleanup_registered = True
 
     def add_server(self, name: str, config: dict) -> MCPClient:
         """Add and connect an MCP server from config."""
