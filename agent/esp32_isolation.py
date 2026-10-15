@@ -28,6 +28,8 @@ import sys
 import time
 from pathlib import Path
 
+from . import c2_ports
+
 logger = logging.getLogger("Guardian.ESP32Isolation")
 
 # ---- Allowed Serial Commands (PC → ESP32) ----
@@ -242,11 +244,13 @@ class FirewallRuleManager:
 
     GUARDIAN_RULE_PREFIX = "AI_Security_Guardian"
 
-    # Ports the guardian NEEDS to access (API calls)
-    ALLOWED_OUTBOUND_PORTS = {443, 80}  # HTTPS + HTTP for API calls
-
-    # Ports the guardian should NEVER use
-    BLOCKED_PORTS = {4444, 31337, 6666, 6667, 6697, 8080, 8443, 9001, 9999}
+    # 端口清单统一在 agent/c2_ports.py。
+    #
+    # 这里原本有两个常量 `ALLOWED_OUTBOUND_PORTS = {443, 80}` 和
+    # `BLOCKED_PORTS = {4444, ...}`，**都只被定义、从没被读过** ——
+    # 真正生效的是下面 generate_rules_script() 模板里硬编码的那串端口。
+    # 也就是说：看起来像"唯一来源"的常量是死的，改它没有任何效果。
+    # 现在模板直接引用 c2_ports，不再各写一份。
 
     @staticmethod
     def is_admin() -> bool:
@@ -279,7 +283,7 @@ New-NetFirewallRule -DisplayName "{cls.GUARDIAN_RULE_PREFIX}_Block_C2_Ports" `
     -Direction Outbound -Action Block `
     -Program $exePath `
     -Protocol TCP `
-    -RemotePort 4444,31337,6666,6667,6697,8080,8443,9001,9999 `
+    -RemotePort {c2_ports.csv()} `
     -Description "Block guardian Python process on known C2/backdoor ports"
 
 # Rule 2: Block guardian on suspicious ports (inbound)

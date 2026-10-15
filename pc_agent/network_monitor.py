@@ -3,37 +3,29 @@
 """
 
 import logging
+import sys
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, List, Set
 
 import psutil
+
+# 确保 agent/ 可导入（与 llm_client.py 同一写法）
+_agent_root = Path(__file__).parent.parent
+if str(_agent_root) not in sys.path:
+    sys.path.insert(0, str(_agent_root))
+
+from agent.c2_ports import KNOWN_C2_PORTS  # noqa: E402  (依赖上方 sys.path 设置)
 
 
 class NetworkMonitor:
     """网络连接监控和威胁检测"""
 
-    # 已知恶意端口
-    MALICIOUS_PORTS = {
-        4444: 'Metasploit Meterpreter',
-        1337: '常见后门',
-        31337: 'Back Orifice',
-        6666: 'IRC C2',
-        6667: 'IRC C2',
-        6697: 'IRC SSL',
-        8080: 'HTTP代理/隧道',
-        8888: '常见代理',
-        9001: 'Tor OR',
-        9030: 'Tor',
-        9050: 'Tor SOCKS',
-        9150: 'Tor Browser',
-        4443: 'Metasploit',
-        5555: 'Android ADB',
-        2323: 'Telnet替代',
-        3389: 'RDP (对外)',
-        5900: 'VNC',
-        6379: 'Redis (未授权)',
-        27017: 'MongoDB (未授权)',
-    }
+    # 已知恶意端口。唯一来源见 agent/c2_ports.py ——
+    # 这里原有一份自建字典，与系统其它地方的 C2 清单重复，而且漏了
+    # 8443 / 9999（esp32_isolation 与 self_audit 都把这两个当 C2）。
+    # 统一之后监测面顺带补上了这两个。
+    MALICIOUS_PORTS = KNOWN_C2_PORTS
 
     # 已知恶意 IP 段 (简化版)
     SUSPICIOUS_NETWORKS = [

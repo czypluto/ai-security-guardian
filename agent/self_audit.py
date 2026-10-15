@@ -36,6 +36,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from . import c2_ports
+
 logger = logging.getLogger("Guardian.SelfAudit")
 
 # ---- Constants ----
@@ -425,8 +427,9 @@ class NetworkSelfCheck:
         "github.com",
     ]
 
-    # Ports that the guardian should NEVER connect to
-    SUSPICIOUS_PORTS = {4444, 31337, 6666, 6667, 6697, 8080, 8443, 9001, 9999}
+    # 守护进程自身绝不该外联的端口。唯一来源见 agent/c2_ports.py ——
+    # 此前这里与 esp32_isolation 各存一份、元素完全相同。
+    SUSPICIOUS_PORTS = c2_ports.GUARDIAN_BLOCKED_PORTS
 
     @staticmethod
     def check() -> dict:
