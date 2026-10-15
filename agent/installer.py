@@ -38,29 +38,55 @@ BLOCKED_PATHS = [
 ]
 
 
+def _within(child: str, parent: str) -> bool:
+    """child 是否**真的**在 parent 目录内。
+
+    **不要用 str.startswith 做这个判断。** 字符串前缀会把 `<parent>-evil/x`
+    也判成"在 parent 内" —— 例如项目根是 `.../ai-security-guardian`，
+    那么 `.../ai-security-guardian-evil/x.md` 一样通过前缀检查。
+
+    normcase 抹平 Windows 的大小写与分隔符差异；commonpath 跨盘符时抛 ValueError。
+    """
+    try:
+        c = os.path.normcase(os.path.abspath(child))
+        p = os.path.normcase(os.path.abspath(parent))
+        return os.path.commonpath([c, p]) == p
+    except ValueError:      # 不同盘符（C: 与 D:）
+        return False
+
+
 def _is_path_safe(file_path: str) -> tuple[bool, str]:
-    """Validate a write path is within the allowed skills directory."""
+    """Validate a write path is within the allowed skills directory.
+
+    两层独立把关：位置（项目内 + skills/ 内）与黑名单（BLOCKED_PATHS）。
+    """
     try:
         resolved = os.path.normpath(os.path.abspath(file_path))
     except Exception:
         return False, "invalid path"
 
-    # Must be inside the project directory
     project_root = os.path.normpath(
         os.path.join(os.path.dirname(__file__), "..")
     )
-    if not resolved.startswith(project_root):
+    if not _within(resolved, project_root):
         return False, "path outside project"
 
-    # Must not touch blocked paths
+    # 黑名单按「路径段」比对。
+    #
+    # 原实现是 `rel.startswith(blocked) or blocked in rel.split(os.sep)`，
+    # 而 BLOCKED_PATHS 里的 "agent/"、"pc_agent/"、"mcp_server/" 带**正斜杠**、
+    # rel 在 Windows 上用**反斜杠**：startswith 永远不成立，
+    # split 切出来的也是 "agent" 而非 "agent/"，同样匹配不上。
+    # 这 3 条（共 10 条）形同虚设，只因"必须在 skills/ 内"这条更严的规则才没出事 ——
+    # 是失效的纵深防御，不是有效防护。
     rel = os.path.relpath(resolved, project_root)
+    parts = [p for p in rel.split(os.sep) if p not in ("", ".")]
     for blocked in BLOCKED_PATHS:
-        if rel.startswith(blocked) or blocked in rel.split(os.sep):
+        b = blocked.rstrip("/\\")
+        if b and b in parts:
             return False, f"blocked path: {blocked}"
 
-    # Must be in skills/ directory
-    in_allowed = any(resolved.startswith(d) for d in ALLOWED_WRITE_DIRS)
-    if not in_allowed:
+    if not any(_within(resolved, d) for d in ALLOWED_WRITE_DIRS):
         return False, "not in skills/ directory"
 
     return True, "ok"
