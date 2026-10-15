@@ -109,7 +109,7 @@ $ python agent_cli.py "全面扫描我的网络安全"
 │  │  │(6层隔离) │ │(PS CMD)  │ │(免费API) │ │(免费API)  │  │  │
 │  │  └─────────┘ └──────────┘ └──────────┘ └───────────┘  │  │
 │  │                                                        │  │
-│  │  Knowledge Base (Milvus/Qdrant 向量检索)                │  │
+│  │  Knowledge Base (内置向量检索 + 中文 BM25，RRF 融合)      │  │
 │  │  MCP Server Mode (暴露工具给 Claude Code 等)            │  │
 │  └────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
@@ -164,16 +164,17 @@ $ python agent_cli.py "全面扫描我的网络安全"
 - ✅ **用户自定义** — `skills/user/` 目录支持个人技能
 
 ### 🧠 知识库系统
-- ✅ **向量存储** — Milvus (主) / Qdrant (后备)，客户端-服务端，线程安全
-- ✅ **Embedding** — vLLM 部署 Qwen3-Embedding (1.7B)，TF-IDF 零依赖后备
-- ✅ **优雅降级** — vLLM / 向量库不可达时自动退回关键词检索，绝不崩溃
+- ✅ **向量存储** — **默认进程内**（纯 Python 暴力余弦，零第三方依赖、不用起容器）；
+  语料涨到几千条以上可切回 Milvus / Qdrant（客户端-服务端）
+- ✅ **Embedding** — transformers 直载 WeMM-Embedding-2B（OpenAI 兼容 `/v1/embeddings`，1024 维）
+- ✅ **中文关键词路** — 自研 CJK bigram BM25，与向量路 RRF 融合
+- ✅ **优雅降级** — 嵌入服务不可达时自动退回关键词检索，绝不崩溃
 - ✅ **越用越聪明** — 每次对话自动积累，检索结果注入新对话
 
-> 启动知识库服务（可选）:
+> **默认不需要启动任何服务** —— 嵌入服务在首次使用时按需拉起（`scripts/run_embed.sh`）。
+> 只有切回 Milvus / Qdrant 时才需要额外起容器：
 > ```bash
-> bash scripts/start_vector_db.sh          # Milvus + Qdrant 容器
-> # 在 WSL2 终端里:
-> bash scripts/setup_vllm_wsl.sh          # 装 vLLM + 下载 Qwen3-Embedding + 启动
+> bash scripts/start_vector_db.sh          # Milvus + Qdrant 容器（可选）
 > ```
 
 ![知识库RAG流程图](images/11_知识库RAG流程图.drawio.png)
@@ -261,9 +262,9 @@ python -m venv .venv
 # 安装依赖
 pip install -r pc_agent/requirements.txt
 
-# 可选: 安装知识库客户端 (Milvus + Qdrant SDK)
-pip install pymilvus qdrant-client
-# 嵌入与向量库服务请见下方"知识库系统"一节的启动命令
+# 知识库开箱可用：默认进程内向量检索，不需要额外装 SDK
+# 仅当要切回 Milvus / Qdrant 时才需要：
+# pip install pymilvus qdrant-client
 ```
 
 > 📌 **规划中**：一键安装 `installer/setup.bat` 尚未实现，请暂按上面的手动步骤安装。
@@ -367,7 +368,7 @@ ai-security-guardian/
 │   ├── esp32_isolation.py             #   ESP32 网络隔离守护 (v3.3)
 │   ├── download_scanner.py            #   下载前置安全扫描 (v3.3)
 │   ├── skill_loader.py                #   .md 技能自动加载
-│   ├── knowledge_base.py              #   向量知识库 (Milvus/Qdrant)
+│   ├── knowledge_base.py              #   知识库 (内置向量 + 中文 BM25, RRF)
 │   ├── defender_tools.py              #   Defender + NVD CVE
 │   ├── otx_tools.py                   #   AlienVault OTX 威胁情报
 │   ├── web_tools.py                   #   DuckDuckGo 搜索 + 抓取
@@ -518,8 +519,8 @@ knowledge_base:
 | **LLM** | OpenAI-compatible API | DeepSeek / 智谱 / 硅基流动 |
 | **桌面 GUI** | PyQt5 + QSS | 暗色极简主题 |
 | **系统托盘** | pystray + Pillow | 后台运行 |
-| **向量数据库** | Milvus (主) / Qdrant (后备) | 对话语义检索 |
-| **Embedding** | vLLM (Qwen3-Embedding-1.7B) / TF-IDF 后备 | 双模 |
+| **向量数据库** | 进程内（纯 Python 余弦）/ Milvus / Qdrant | 对话语义检索，默认零依赖 |
+| **Embedding** | transformers 直载 WeMM-Embedding-2B（1024 维） | OpenAI 兼容本地服务 |
 | **MCP 协议** | JSON-RPC 2.0 | 工具扩展 |
 | **威胁情报** | AlienVault OTX + NIST NVD | 免费 API |
 | **搜索** | DuckDuckGo Lite | 免费无 Key |
@@ -664,7 +665,7 @@ MIT License — 自由使用、修改、分发
 - ESP32 & Arduino 社区
 - Adafruit SSD1306 / GFX 驱动库
 - psutil 系统监控库
-- Milvus / Qdrant 向量数据库
+- Milvus / Qdrant 向量数据库（可选后端）
 - AlienVault OTX 免费威胁情报
 - NIST NVD 免费漏洞数据库
 - PyQt5 桌面框架
