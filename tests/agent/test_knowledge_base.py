@@ -27,7 +27,8 @@ def test_degraded_mode(tmp_path):
                        embedding_cfg={"enabled": False})
     assert kb._store is None
     assert kb._store_ready is False
-    assert kb._embed_type == "tfidf-fallback"
+    assert kb._embed_type == "unavailable"
+    assert kb._embed_fn is None
 
     conv_id = kb.add_conversation(MESSAGES)
     assert conv_id is not None
@@ -43,6 +44,29 @@ def test_degraded_mode(tmp_path):
     assert stats["vector_db"] == "none"
     assert "storage_dir" in stats
     assert "chroma_dir" in stats  # 遗留别名
+
+
+def test_store_present_but_embedding_unavailable_skips_vector_path(tmp_path):
+    """向量库可用、嵌入不可用：必须跳过向量路且不崩。
+
+    这是原来靠 `_embed_type != "tfidf-fallback"` 这个字符串比较来把关的组合。
+    删掉那个 TF-IDF 兜底类之后改为判断 `_embed_fn is not None`，
+    这里把它钉住 —— 否则 `self._embed_fn([...])` 会在 None 上抛 TypeError。
+    """
+    kb = KnowledgeBase(
+        persist_dir=tmp_path,
+        vector_db_cfg={"provider": "local", "local": {"path": str(tmp_path / "idx.json")}},
+        embedding_cfg={"enabled": False},
+    )
+    assert kb._store is not None and kb._store.name == "local"
+    assert kb._embed_fn is None
+    assert kb._store_ready is False
+
+    conv_id = kb.add_conversation(MESSAGES)      # 不得因嵌入缺失而抛错
+    assert conv_id is not None
+    assert kb.count == 0                          # 没有向量入库
+    hits = kb.search("防火墙")                     # 关键词路照常
+    assert any("防火墙" in h["text"] for h in hits)
 
     kb.delete_conversation(conv_id)
     assert not (tmp_path / "conversations" / f"{conv_id}.md").exists()

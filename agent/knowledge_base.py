@@ -39,71 +39,6 @@ from .bm25 import Bm25Index, rrf_scores
 
 logger = logging.getLogger("Guardian.KB")
 
-# 内置轻量 Embedding（纯 Python TF-IDF 后备）
-
-class _FallbackEmbedding:
-    """轻量级 TF-IDF 向量化，零依赖后备方案。
-
-    用于 vLLM 不可用的场景。虽然不如深度学习模型精准，但对于关键词匹配型检索足够有效。
-    """
-
-    def __init__(self):
-        self._vocab: Dict[str, int] = {}
-        self._idf: Dict[str, float] = {}
-
-    def _tokenize(self, text: str) -> List[str]:
-        """中英文混合分词 (字符级 bigram)。"""
-        text = text.lower()
-        tokens = []
-        # 提取中文字符作为独立 token
-        chinese = re.findall(r'[一-鿿]+', text)
-        for seg in chinese:
-            tokens.append(seg)
-            # 中文 bigram
-            for i in range(len(seg) - 1):
-                tokens.append(seg[i:i + 2])
-        # 英文/数字单词
-        words = re.findall(r'[a-z0-9]{2,}', text)
-        tokens.extend(words)
-        return tokens
-
-    def fit(self, documents: List[str]):
-        """构建 IDF 词汇表。"""
-        df: Dict[str, int] = {}
-        for doc in documents:
-            seen = set(self._tokenize(doc))
-            for token in seen:
-                df[token] = df.get(token, 0) + 1
-
-        n = len(documents) or 1
-        self._vocab = {token: i for i, token in enumerate(sorted(df.keys()))}
-        self._idf = {token: __import__('math').log(n / (df[token] + 1)) + 1
-                      for token in df}
-
-    def encode(self, text: str, dim: int = 384) -> List[float]:
-        """将文本编码为固定维度向量。"""
-        tokens = self._tokenize(text)
-        if not self._vocab or not tokens:
-            return [0.0] * dim
-
-        # TF-IDF 向量
-        vec = [0.0] * len(self._vocab)
-        for token in tokens:
-            if token in self._vocab:
-                tf = tokens.count(token) / len(tokens)
-                vec[self._vocab[token]] = tf * self._idf.get(token, 1.0)
-
-        # 哈希压缩到目标维度 (feature hashing)
-        result = [0.0] * dim
-        for i, v in enumerate(vec):
-            if v != 0:
-                h = hash(f"feat_{i}") % dim
-                result[h] += v
-
-        # L2 归一化
-        norm = __import__('math').sqrt(sum(x * x for x in result)) or 1.0
-        return [x / norm for x in result]
-
 
 # 本地嵌入（OpenAI 兼容 /v1/embeddings）
 
@@ -158,7 +93,19 @@ class HttpEmbeddingFunction:
 # Embedding 工厂
 
 def _create_embedding_fn(embedding_cfg: Optional[dict] = None):
-    """创建 embedding 函数：优先本地嵌入服务，不可用时降级 TF-IDF。"""
+    """创建 embedding 函数。返回 (fn, 类型)；不可用时 fn 为 None。
+
+    **没有 TF-IDF 兜底**。曾经有个 `_FallbackEmbedding`，但它：
+      - 没实现 `__call__`，而调用方一律写作 `self._embed_fn([...])` → 调用即 TypeError
+      - `fit()` 从来没有被调用过，即使能调也只会编码出全零向量
+      - 而 `_store_ready` 在 tfidf 分支恒为 False，向量路根本不走 → 永远不会触发
+    三个条件叠在一起，让这个类**运行时不可达**，只在 README 里以
+    "TF-IDF 零依赖后备"的名义出现过 —— 承诺的东西其实不存在。
+
+    删掉之后语义反而更清楚：嵌入不可用 = 没有向量路，检索退回**中文 BM25**
+    （`_bm25_search`）。那本来就是更合适的降级目标 —— CJK bigram BM25 的
+    词面召回强于哈希压缩到 384 维的 TF-IDF。
+    """
     cfg = embedding_cfg if isinstance(embedding_cfg, dict) else {}
     if cfg.get("enabled", True):
         try:
@@ -171,11 +118,11 @@ def _create_embedding_fn(embedding_cfg: Optional[dict] = None):
             logger.info("Embedding: 本地嵌入服务 (%s, dim=%s)", model, dim)
             return fn, "transformers"
         except Exception as e:
-            logger.warning("本地嵌入服务不可用(%s)，降级 TF-IDF 关键词检索", e)
+            logger.warning("本地嵌入服务不可用(%s)，本次仅用中文 BM25 关键词检索", e)
     else:
-        logger.warning("未启用本地嵌入，降级 TF-IDF 关键词检索")
+        logger.warning("未启用本地嵌入，本次仅用中文 BM25 关键词检索")
 
-    return _FallbackEmbedding(), "tfidf-fallback"
+    return None, "unavailable"
 
 
 # 对话 Markdown 存储
@@ -338,8 +285,10 @@ class KnowledgeBase:
         # 向量库（默认进程内；可选 Milvus/Qdrant；全不可用时为 None）
         from .vector_store import create_vector_store
         self._store = create_vector_store(vector_db_cfg)
-        self._store_ready = (self._store is not None
-                             and self._embed_type != "tfidf-fallback")
+        # 向量路要求「有 store」且「有可用的嵌入」二者兼备。
+        # 用 _embed_fn is not None 直接判断，而不是比字符串标签 ——
+        # 标签是给人看的，判断依据应该是对象本身在不在。
+        self._store_ready = self._store is not None and self._embed_fn is not None
         self._vector_db_name = self._store.name if self._store else None
         self._dim: Optional[int] = None
         self._collection_name = collection_name
