@@ -1,0 +1,144 @@
+"""测试 agent/graph_model.py: GuardianChatModel 与消息互转。
+
+可测性关键：适配层只是把 LLMRouter 包了一层，所以这里用假 router 就能
+完整验证「消息转换 / tool_calls 解析 / 元数据保留 / 故障时不吞错」。
+"""
+from __future__ import annotations
+
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+from agent.graph_model import (
+    GuardianChatModel,
+    LLMUnavailableError,
+    dicts_to_messages,
+    messages_to_dicts,
+)
+
+
+class FakeRouter:
+    """记录收到的参数，返回预设响应。不碰网络。"""
+
+    def __init__(self, response=None):
+        self.response = response or {
+            "_ok": True,
+            "_provider": "deepseek",
+            "_latency_ms": 42.0,
+            "choices": [{
+                "message": {"content": "hello", "tool_calls": []},
+                "finish_reason": "stop",
+            }],
+        }
+        self.calls = []
+        self.active_provider = None
+
+    def chat(self, messages, tools=None, tool_choice="auto",
+             max_tokens=1024, temperature=0.7, stream=False):
+        self.calls.append({
+            "messages": messages, "tools": tools,
+            "tool_choice": tool_choice, "max_tokens": max_tokens,
+        })
+        return self.response
+
+
+# ---- 消息互转 ----
+
+class TestMessageConversion:
+    def test_messages_to_dicts_roles(self):
+        msgs = [
+            SystemMessage(content="sys"),
+            HumanMessage(content="hi"),
+            AIMessage(content="thinking", tool_calls=[
+                {"name": "scan_network", "args": {"deep": True},
+                 "id": "c1", "type": "tool_call"}]),
+            ToolMessage(content='{"ok": true}', tool_call_id="c1"),
+        ]
+        out = messages_to_dicts(msgs)
+        assert [m["role"] for m in out] == ["system", "user", "assistant", "tool"]
+        assert out[3]["tool_call_id"] == "c1"
+        # tool_calls 必须还原成 OpenAI 的嵌套形态，arguments 是 JSON 字符串
+        tc = out[2]["tool_calls"][0]
+        assert tc["id"] == "c1"
+        assert tc["function"]["name"] == "scan_network"
+        assert tc["function"]["arguments"] == '{"deep": true}'
+
+    def test_dicts_to_messages_roundtrip(self):
+        original = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+            {"role": "tool", "tool_call_id": "c9", "content": "result"},
+        ]
+        msgs = dicts_to_messages(original)
+        assert [type(m).__name__ for m in msgs] == [
+            "SystemMessage", "HumanMessage", "ToolMessage"]
+        assert msgs[2].tool_call_id == "c9"
+
+    def test_multimodal_content_is_flattened(self):
+        """content 为 block 列表时要拍平成字符串 —— OpenAI 只接受 str。"""
+        msg = AIMessage(content=[{"type": "text", "text": "a"}, {"type": "text", "text": "b"}])
+        assert messages_to_dicts([msg])[0]["content"] == "ab"
+
+
+# ---- 模型 ----
+
+class TestGuardianChatModel:
+    def test_generate_sends_dicts_and_keeps_tools_untouched(self):
+        router = FakeRouter()
+        model = GuardianChatModel(router=router)
+        schemas = [{"type": "function", "function": {"name": "t", "description": "d",
+                                                     "parameters": {"type": "object",
+                                                                    "properties": {}}}}]
+        model.bind_tools(schemas).invoke([HumanMessage(content="hi")])
+
+        sent = router.calls[0]
+        # 原样透传 —— 没有被 convert_to_openai_tool 归一化
+        assert sent["tools"] == schemas
+        assert sent["messages"] == [{"role": "user", "content": "hi"}]
+
+    def test_generate_parses_tool_calls_and_metadata(self):
+        router = FakeRouter({
+            "_ok": True, "_provider": "zhipu", "_latency_ms": 12.5,
+            "choices": [{
+                "message": {"content": "", "tool_calls": [
+                    {"id": "c1", "function": {"name": "run_command",
+                                              "arguments": '{"command": "ipconfig"}'}}]},
+                "finish_reason": "tool_calls",
+            }],
+        })
+        result = GuardianChatModel(router=router).invoke([HumanMessage(content="run it")])
+        assert result.tool_calls[0]["name"] == "run_command"
+        assert result.tool_calls[0]["args"] == {"command": "ipconfig"}
+        # provider / 延迟元数据必须活下来（排查「这轮走的哪个 provider」要用）
+        assert result.additional_kwargs["_provider"] == "zhipu"
+        assert result.response_metadata["latency_ms"] == 12.5
+
+    def test_malformed_tool_arguments_degrade_to_empty_dict(self):
+        """arguments 不是合法 JSON 时给 {}，不能让整轮炸掉。"""
+        router = FakeRouter({
+            "_ok": True,
+            "choices": [{"message": {"content": "", "tool_calls": [
+                {"id": "c1", "function": {"name": "t", "arguments": "{not json"}}]},
+                "finish_reason": "tool_calls"}],
+        })
+        result = GuardianChatModel(router=router).invoke([HumanMessage(content="x")])
+        assert result.tool_calls[0]["args"] == {}
+
+    def test_all_providers_down_raises_llm_unavailable(self):
+        """故障转移全失败 -> 抛 LLMUnavailableError，由 run_stream 转成 error 事件。"""
+        router = FakeRouter({"_ok": False, "_error": "deepseek: timeout"})
+        with pytest.raises(LLMUnavailableError) as ei:
+            GuardianChatModel(router=router).invoke([HumanMessage(content="x")])
+        assert "timeout" in str(ei.value)
+
+    def test_router_failover_is_not_bypassed(self):
+        """适配层只调 router.chat —— 故障转移/冷却仍由 LLMRouter 负责。"""
+        router = FakeRouter()
+        model = GuardianChatModel(router=router)
+        model.invoke([HumanMessage(content="x")])
+        assert len(router.calls) == 1
+        assert model._llm_type == "guardian-router"
+
+    def test_max_tokens_from_construction(self):
+        router = FakeRouter()
+        GuardianChatModel(router=router, max_tokens=256).invoke([HumanMessage(content="x")])
+        assert router.calls[0]["max_tokens"] == 256
