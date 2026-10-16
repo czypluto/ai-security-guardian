@@ -89,6 +89,8 @@ class AgentCore:
         # 图与 thread：thread_id 决定 checkpoint 的归属，clear 时换一个新 thread
         self._thread_id: str = ""
         self._graph_config: dict = {}
+        # 审批回调：由驱动方（GUI 的 worker）临时挂上。为空时走 CLI 的 input()。
+        self.approval_callback = None
         self._model = build_chat_model(self.llm, config)
         self._graph = build_graph(
             config, self.tools, self._model, skills=self.skills, kb=self.kb,
@@ -160,7 +162,8 @@ class AgentCore:
                 result_parts.append(f"\n[Error: {event['content']}]\n")
         return "".join(result_parts)
 
-    def run_stream(self, user_input: str) -> Generator[dict, None, None]:
+    def run_stream(self, user_input: str,
+                   ephemeral: bool = False) -> Generator[dict, None, None]:
         """跑一轮，产出 `{type: text|tool_start|tool_result|error}` 事件。
 
         事件格式与改造前完全一致，所以 `agent_cli.display_stream` 无需改动。
@@ -168,8 +171,18 @@ class AgentCore:
         中断控制流：`graph.stream` 遇到 `interrupt()` 时本次迭代就结束了，
         于是在这里问用户，再用 `Command(resume=...)` **新开一次** stream。
         恢复不是「继续同一个生成器」，而是「用新输入再跑一次」。
+
+        `ephemeral=True` 用于 GUI 的「生成安全报告 / 修复建议」这类一次性任务：
+        走一个临时 thread，既不污染用户的对话历史，也不写进 KB 落库的消息里。
         """
-        self._conversation_messages.append({"role": "user", "content": user_input})
+        graph_config = self._graph_config
+        if ephemeral:
+            graph_config = {
+                **self._graph_config,
+                "configurable": {"thread_id": f"ephemeral-{uuid.uuid4().hex}"},
+            }
+        else:
+            self._conversation_messages.append({"role": "user", "content": user_input})
 
         payload = {
             "messages": [HumanMessage(content=user_input)],
@@ -180,7 +193,7 @@ class AgentCore:
             while True:
                 interrupts = []
                 for part in self._graph.stream(
-                    payload, self._graph_config,
+                    payload, graph_config,
                     stream_mode=["updates", "custom"], version="v2",
                 ):
                     if part["type"] == "custom":
@@ -205,10 +218,18 @@ class AgentCore:
             yield {"type": "text", "content": "[Max iterations reached]"}
             return
 
-        self._record_result()
+        if not ephemeral:
+            self._record_result(graph_config)
 
     def _ask_approval(self, payload: dict) -> dict:
-        """向用户征求一次执行批准。GUI 侧会覆写这个方法。"""
+        """向用户征求一次执行批准。
+
+        GUI 会在运行期间临时挂上 ``approval_callback``（由 worker 弹对话框），
+        这里优先走它；否则退回终端交互，供 CLI 使用。
+        """
+        if self.approval_callback is not None:
+            return self.approval_callback(payload)
+
         tool = payload.get("tool", "?")
         args = json.dumps(payload.get("arguments") or {}, ensure_ascii=False)
         risk = payload.get("risk_level", "unknown")
@@ -225,10 +246,10 @@ class AgentCore:
         approved = answer in ("y", "yes")
         return {"approved": approved, "reason": "cli_user" if approved else "cli_denied"}
 
-    def _record_result(self):
+    def _record_result(self, graph_config: dict = None):
         """一轮结束后把结果回写：KB 落库用的消息 + banner 展示用的技能名。"""
         try:
-            values = self._graph.get_state(self._graph_config).values or {}
+            values = self._graph.get_state(graph_config or self._graph_config).values or {}
         except Exception as e:  # noqa: BLE001 - 只是记录，失败不该让整轮报错
             logger.debug("读取图状态失败: %s", e)
             return

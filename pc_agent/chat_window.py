@@ -14,6 +14,7 @@ import logging
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -54,7 +55,7 @@ if _AGENT_ROOT not in sys.path:
     sys.path.insert(0, _AGENT_ROOT)
 
 try:
-    from agent.tools import create_tool_registry
+    from agent.core import AgentCore  # noqa: F401  用作可用性探测
     HAS_AGENT = True
 except ImportError:
     HAS_AGENT = False
@@ -126,40 +127,91 @@ SECURITY_AGENT_PROMPT = """你是"安小盾"，一个 AI 网络安全管家，�
 6. 如果检测到威胁，说明严重等级和建议的应对措施"""
 
 
-# LLM ReAct 后台工作线程 — Think -> Act -> Observe -> Respond
+# 协作取消用的内部信号
+class _WorkerCancelled(Exception):
+    """worker 收到协作取消请求。不是错误，不进错误路径。"""
+
+
+# LLM 后台工作线程 — 驱动 AgentCore 的状态图
 class LLMWorker(QThread):
-    """ReAct 循环: LLM 可以调用安全工具来回答用户问题。
-    每个工具调用和结果都实时显示在聊天界面。"""
-    finished = pyqtSignal(str, bool)       # (final_text, success)
-    streaming = pyqtSignal(str)            # 流式文本增量
-    tool_call_signal = pyqtSignal(str, str) # (tool_name, args_summary)
+    """驱动 AgentCore 的状态图，把事件翻译成 Qt 信号。
+
+    这里曾经自己实现了一整套 ReAct 循环 —— 与 agent/core.py 那份是**并行的
+    第二套**，两边各写一份 system prompt、各自维护历史。现在两份合一：
+    GUI 与 CLI 跑的是同一张 LangGraph 状态图（见 agent/graph.py）。
+
+    审批走 LangGraph 的 interrupt()：图在 approval 节点挂起并返回，worker 通过
+    approval_request 信号把请求交给主线程弹对话框，再等 threading.Event 被 set。
+
+    回程刻意**不用 Qt 信号**：QThread 对象的线程亲和性是**创建它的线程**（主线程），
+    所以「主线程 -> worker 的槽」这种 queued connection 会在主线程执行，而不是在
+    worker 线程 —— 用它回传审批结果会得到一个在主线程里空等的假象。改用普通
+    Python 方法（deliver_approval）+ threading.Event 规避整个问题。
+    """
+
+    finished = pyqtSignal(str, bool)          # (final_text, success)
+    streaming = pyqtSignal(str)               # 文本增量
+    tool_call_signal = pyqtSignal(str, str)   # (tool_name, args_summary)
     tool_result_signal = pyqtSignal(str, str) # (tool_name, result_summary)
+    approval_request = pyqtSignal(str, dict)  # (request_id, payload) — 新增
 
     MAX_TOOL_ITERATIONS = 5
+    # 语义改为「**无进展**时长」：每收到一个事件就重置。等待人工审批期间
+    # 由 _ask_approval 自己的轮询维持，不走这个预算。
     TIMEOUT_SECONDS = 60
+    APPROVAL_TIMEOUT = 300
 
-    def __init__(self, router, messages: list, tool_schemas: list,
-                 tool_registry, parent=None, kb=None, user_message=""):
+    def __init__(self, agent, message: str = "", parent=None, ephemeral: bool = False):
         super().__init__(parent)
-        self.router = router          # LLMRouter 实例
-        self.messages = list(messages) # 完整消息历史 (会被修改)
-        self.tool_schemas = tool_schemas
-        self.tool_registry = tool_registry  # ToolRegistry 实例
-        self.kb = kb                  # 知识库（在 worker 线程构建上下文）
-        self.user_message = user_message
-        self._start_time = 0
+        self.agent = agent
+        self.message = message
+        self.ephemeral = ephemeral
+        self._start_time = 0.0
+        self._last_progress = 0.0
+        self._cancelled = threading.Event()
+        self._approval_lock = threading.Lock()
+        self._approval_events: Dict[str, threading.Event] = {}
+        self._approval_results: Dict[str, dict] = {}
+        self._waiting_for_approval = threading.Event()
+
+    # ---- 主线程调用（普通方法，不是 Qt 槽）----
+
+    @property
+    def waiting_for_approval(self) -> bool:
+        return self._waiting_for_approval.is_set()
+
+    @property
+    def seconds_since_progress(self) -> float:
+        return time.time() - (self._last_progress or self._start_time)
+
+    def note_progress(self):
+        """把「无进展」计时归零。主线程在弹完审批框后调用。"""
+        self._last_progress = time.time()
+
+    def deliver_approval(self, request_id: str, decision: dict):
+        """主线程在用户点了对话框之后调用。"""
+        with self._approval_lock:
+            self._approval_results[request_id] = decision
+            event = self._approval_events.pop(request_id, None)
+        if event:
+            event.set()   # Event.set 本身线程安全
+
+    def request_cancel(self):
+        """协作式取消：worker 会在下一个检查点退出，不会撕裂 SQLite 写入。"""
+        self._cancelled.set()
+
+    # ---- worker 线程 ----
 
     def run(self):
         self._start_time = time.time()
+        self._last_progress = self._start_time
 
-        if self.router is None:
+        if self.agent is None:
             self.finished.emit(
-                "LLM Router 未初始化。\n"
-                "请检查 config.yaml 中的 llm 配置。",
-                False)
+                "Agent 未就绪。\n请检查 config.yaml 中的 llm 配置。", False)
             return
 
-        if self.router.available_count == 0:
+        if getattr(self.agent.llm, "available_count", 0) == 0:
             self.finished.emit(
                 "未配置 AI 模型。请在 config.yaml 中配置 DeepSeek API Key。\n\n"
                 "获取 Key: https://platform.deepseek.com\n"
@@ -167,152 +219,74 @@ class LLMWorker(QThread):
                 False)
             return
 
+        self.agent.approval_callback = self._ask_approval
         try:
-            self._build_kb_context()
-            self._react_loop()
+            self._drive()
+        except _WorkerCancelled:
+            self.finished.emit("已取消。", False)
         except Exception as e:
             import traceback
             self.finished.emit(f"AI 异常: {e}\n{traceback.format_exc()}", False)
+        finally:
+            self.agent.approval_callback = None
+            self._waiting_for_approval.clear()
 
-    def _build_kb_context(self):
-        """在 worker 线程构建知识库上下文（避免阻塞 GUI 线程）。
-
-        带时间预算：嵌入服务冷启动要加载模型（实测约 20s），
-        绝不能因此拖慢首条回复。4s 内构建不出来就放弃 KB 上下文，直接走 LLM。
-        """
-        if not self.kb or not self.user_message:
-            return
-
-        result = []
-        done = threading.Event()
-
-        def _build():
-            try:
-                result.append(self.kb.build_context(self.user_message, top_k=3))
-            except Exception:
-                pass
-            finally:
-                done.set()
-
-        # 独立守护线程 + 超时等待；超时后不阻塞（遗留线程在后台自行结束）
-        threading.Thread(target=_build, daemon=True).start()
-        if not done.wait(timeout=4):
-            return
-
-        kb_context = result[0] if result else None
-        if kb_context:
-            self.messages.insert(1, {"role": "system", "content": kb_context})
-
-    def _react_loop(self):
-        """ReAct 主循环: Think → Act → Observe → Repeat"""
+    def _drive(self):
         full_text = ""
-        iteration = 0
+        for event in self.agent.run_stream(self.message, ephemeral=self.ephemeral):
+            if self._cancelled.is_set():
+                raise _WorkerCancelled()
+            self._last_progress = time.time()
 
-        while iteration < self.MAX_TOOL_ITERATIONS:
-            iteration += 1
-
-            if time.time() - self._start_time > self.TIMEOUT_SECONDS:
-                if full_text.strip():
-                    break
-                self.finished.emit("AI 响应超时，请稍后重试。", False)
+            etype = event.get("type", "")
+            if etype == "text":
+                chunk = event.get("content", "")
+                full_text += chunk
+                self.streaming.emit(chunk)
+            elif etype == "tool_start":
+                self.tool_call_signal.emit(
+                    event.get("name", "?"),
+                    json.dumps(event.get("arguments") or {}, ensure_ascii=False)[:120])
+            elif etype == "tool_result":
+                self.tool_result_signal.emit(
+                    event.get("name", "?"), str(event.get("result", ""))[:300])
+            elif etype == "error":
+                self.finished.emit(
+                    f"⚠️ {event.get('content', 'AI 服务异常')}\n\n请检查网络连接后重试。",
+                    False)
                 return
 
-            # 调用 LLM (流式, 带 tool schemas)
-            text_chunks = []
-            tool_calls_received = []
-            stream_error = None
-
-            for event in self.router.chat_stream(
-                messages=self.messages,
-                tools=self.tool_schemas if self.tool_schemas else None,
-                max_tokens=1024,
-            ):
-                if time.time() - self._start_time > self.TIMEOUT_SECONDS:
-                    break
-
-                etype = event.get("type", "")
-
-                if etype == "text":
-                    text_chunks.append(event["content"])
-                    self.streaming.emit(event["content"])
-
-                elif etype == "tool_call":
-                    tool_calls_received.append(event["tool_call"])
-
-                elif etype == "error":
-                    stream_error = event.get("content", "AI 服务异常")
-
-            # 网络/服务错误且无任何输出 → 立即失败，不再重试（避免多次 30s 超时表现成卡死）
-            if stream_error and not text_chunks and not tool_calls_received:
-                self.finished.emit(f"⚠️ {stream_error}\n\n请检查网络连接后重试。", False)
-                return
-
-            if tool_calls_received:
-                # Act: 执行工具
-                # 规范化 tool_calls 格式 (移除内部字段 arguments_parsed, 添加 type)
-                clean_tool_calls = []
-                for tc in tool_calls_received:
-                    func = tc.get("function", {})
-                    clean_tc = {
-                        "id": tc.get("id", ""),
-                        "type": "function",
-                        "function": {
-                            "name": func.get("name", ""),
-                            "arguments": func.get("arguments", "{}"),
-                        },
-                    }
-                    clean_tool_calls.append(clean_tc)
-
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": "".join(text_chunks) if text_chunks else "",
-                    "tool_calls": clean_tool_calls,
-                }
-                self.messages.append(assistant_msg)
-
-                # 执行每个工具
-                for tc in tool_calls_received:
-                    func = tc.get("function", {})
-                    name = func.get("name", "unknown")
-                    try:
-                        args = func.get("arguments_parsed", {})
-                    except Exception:
-                        args = {}
-
-                    args_summary = json.dumps(args, ensure_ascii=False)[:120]
-                    self.tool_call_signal.emit(name, args_summary)
-
-                    # 执行工具
-                    result_str = self.tool_registry.execute(name, args)
-                    try:
-                        result_obj = json.loads(result_str)
-                        result_brief = json.dumps(result_obj, ensure_ascii=False)[:300]
-                    except Exception:
-                        result_brief = result_str[:300]
-
-                    self.tool_result_signal.emit(name, result_brief)
-
-                    # 添加 tool 结果消息
-                    self.messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.get("id", ""),
-                        "content": result_str,
-                    })
-
-                # 继续循环让 LLM 处理工具结果
-                continue
-
-            # Respond: 没有工具调用, 返回最终文本
-            full_text = "".join(text_chunks)
-            if full_text.strip():
-                self.finished.emit(full_text.strip(), True)
-                return
-
-        # 达到最大迭代次数
         if full_text.strip():
             self.finished.emit(full_text.strip(), True)
         else:
             self.finished.emit("[已达到最大工具调用次数，请重新提问]", False)
+
+    def _ask_approval(self, payload: dict) -> dict:
+        """在 worker 线程上被 AgentCore 调用；把问题推给主线程并等待。"""
+        request_id = uuid.uuid4().hex
+        event = threading.Event()
+        with self._approval_lock:
+            self._approval_events[request_id] = event
+
+        self._waiting_for_approval.set()
+        self.approval_request.emit(request_id, payload)   # 跨线程：自动 queued 到主线程
+
+        deadline = time.time() + self.APPROVAL_TIMEOUT
+        try:
+            while not event.wait(0.25):
+                if self._cancelled.is_set():
+                    raise _WorkerCancelled()
+                if time.time() > deadline:
+                    # 超时按拒绝处理 —— fail-closed
+                    return {"approved": False, "reason": "approval_timeout"}
+        finally:
+            self._waiting_for_approval.clear()
+            with self._approval_lock:
+                self._approval_events.pop(request_id, None)
+
+        with self._approval_lock:
+            return self._approval_results.pop(
+                request_id, {"approved": False, "reason": "unknown"})
 
 
 # 消息气泡组件
@@ -599,10 +573,6 @@ class ChatWindow(QDialog):
         self._is_processing = False
         self._message_widgets: list = []
 
-        # Agent 工具注册表 (延迟初始化)
-        self._tool_registry = None
-        self._tool_schemas = None
-
         # Knowledge base — 后台线程加载。
         # 默认向量库在进程内、嵌入是本地 HTTP 服务，都可在后台线程安全调用；
         # 服务不可达时 get_knowledge_base() 自动降级为关键词检索，绝不崩溃。
@@ -610,6 +580,15 @@ class ChatWindow(QDialog):
         self._kb_loaded = False
         if HAS_KB:
             self._ensure_kb()
+
+        # Agent 核心（状态图）—— 也在后台加载：AgentCore.__init__ 里的
+        # MCPManager 会连外部子进程，可能阻塞数秒。GUI 与 CLI 现在共用这一份
+        # 实现，不再各写一套 ReAct 循环。
+        self._agent = None
+        self._agent_loaded = False
+        self._agent_failed = False
+        if HAS_AGENT:
+            self._ensure_agent()
 
         self._build_ui()
         self._add_welcome_message()
@@ -907,66 +886,118 @@ class ChatWindow(QDialog):
             self.logger.debug(f"知识库加载失败: {e}")
             self._kb = None
 
-    # Agent Tools 延迟初始化
-    def _ensure_tools(self):
-        """延迟加载 agent ToolRegistry 和 tool schemas"""
-        if self._tool_registry is not None:
+    # Agent 核心延迟初始化
+    def _ensure_agent(self):
+        """后台构建 AgentCore（状态图 + 工具 + 技能）。"""
+        if self._agent is not None or self._agent_loaded:
             return
-        if not HAS_AGENT:
-            self.logger.debug("agent/tools.py 不可用")
-            self._tool_registry = False  # 标记已尝试
-            return
+        self._agent_loaded = True
+        threading.Thread(target=self._agent_load_worker, daemon=True).start()
+
+    def _agent_load_worker(self):
         try:
-            self._tool_registry = create_tool_registry()
-            self._tool_schemas = self._tool_registry.get_schemas()
+            from agent.config import AgentConfig
+            from agent.core import AgentCore
+
+            cfg = AgentConfig.from_config_file(str(Path(__file__).parent / "config.yaml"))
+            # 保留 GUI 的人格提示词与迭代预算
+            cfg.system_prompt = SECURITY_AGENT_PROMPT
+            cfg.max_iterations = LLMWorker.MAX_TOOL_ITERATIONS
+            # 人在场：审批走 approval_request 信号 + QMessageBox，
+            # 因此显式 interactive，不做「无 tty 就降级为拒绝」那套（那是 CLI 的）
+            cfg.approval_mode = "interactive"
+
+            self._agent = AgentCore(cfg, knowledge_base=self._kb)
             self.logger.info(
-                f"Agent 工具已加载: {len(self._tool_schemas)} 个工具可用")
+                f"Agent 核心已加载: {self._agent.tool_count} 工具, "
+                f"{self._agent.skill_count} 技能")
         except Exception as e:
-            self.logger.debug(f"工具注册表初始化失败: {e}")
-            self._tool_registry = False
+            self.logger.debug(f"Agent 核心加载失败: {e}")
+            self._agent = None
+            self._agent_failed = True
 
-    def _get_router(self):
-        """从 controller.llm 获取底层 LLMRouter"""
-        try:
-            llm = self.controller.llm
-            if llm is None:
-                return None
-            # MultiLLMClient 适配器内部持有 LLMRouter
-            if hasattr(llm, '_router') and llm._router is not None:
-                return llm._router
-        except Exception:
-            pass
-        return None
-
-    # AI 调用 (ReAct)
+    # AI 调用（驱动状态图）
     def _call_ai(self, user_message: str):
-        router = self._get_router()
-
-        # 构建消息: system prompt + 对话历史 (不含占位符)
-        conversation_for_llm = list(self._conversation[-20:])
-        messages_for_llm = [
-            {"role": "system", "content": SECURITY_AGENT_PROMPT},
-        ]
-
-        messages_for_llm.extend(conversation_for_llm)
-
-        # 加载工具
-        self._ensure_tools()
-        tool_schemas = self._tool_schemas if self._tool_registry else None
-        tool_registry = self._tool_registry if self._tool_registry else None
+        if self._agent is None:
+            self._add_message(
+                "AI 核心初始化失败。请检查 agent/ 模块与 config.yaml。" if self._agent_failed
+                else "AI 核心仍在初始化（首次启动要加载工具与 MCP），请稍候再试。",
+                'system')
+            self._on_ai_response("", False)
+            return
 
         # UI 占位气泡 (不加入对话历史)
         self._streaming_bubble = self._add_message('思考中...', 'ai')
         self._streaming_text = ""
 
-        self._worker = LLMWorker(
-            router, messages_for_llm, tool_schemas, tool_registry, self,
-            kb=self._kb, user_message=user_message)
+        self._worker = LLMWorker(self._agent, message=user_message, parent=self)
         self._worker.streaming.connect(self._on_stream_chunk)
         self._worker.tool_call_signal.connect(self._on_tool_call)
         self._worker.tool_result_signal.connect(self._on_tool_result)
+        self._worker.approval_request.connect(self._on_approval_request)
         self._worker.finished.connect(self._on_ai_response)
         self._worker.start()
+
+    def _run_agent_task(self, prompt: str, bubble: ChatBubble, on_done):
+        """跑一次一次性 agent 任务（安全报告 / 修复建议）。
+
+        用 ephemeral=True 走独立 thread —— 这些系统指令不该写进用户的对话历史。
+        """
+        if self._agent is None:
+            self._update_bubble_text(bubble, "AI 核心尚未就绪，请稍后再试。")
+            return
+
+        self._is_processing = True
+        self._input_bar.set_enabled(False)
+
+        worker = LLMWorker(self._agent, message=prompt, parent=self, ephemeral=True)
+        buffer: list = []
+
+        def _on_chunk(chunk: str):
+            buffer.append(chunk)
+            self._update_bubble_text(bubble, "".join(buffer))
+
+        worker.streaming.connect(_on_chunk)
+        worker.approval_request.connect(self._on_approval_request)
+        worker.finished.connect(lambda text, ok: on_done(text, ok, bubble))
+        # 赋给 self._worker：审批握手与看门狗都认这一个
+        self._worker = worker
+        worker.start()
+
+    def _on_approval_request(self, request_id: str, payload: dict):
+        """主线程：弹确认对话框，并把结果交回 worker。"""
+        worker = self._worker
+        if worker is None:
+            return
+
+        # 关键：QMessageBox 是模态的，其内嵌事件循环会**继续处理 QTimer**。
+        # 不暂停看门狗的话，用户还在读对话框时线程就可能被判超时。
+        self._watchdog.stop()
+        try:
+            tool = payload.get("tool", "?")
+            risk = payload.get("risk_level", "unknown")
+            args = json.dumps(payload.get("arguments") or {}, ensure_ascii=False)
+            if len(args) > 400:
+                args = args[:400] + "…"
+
+            reply = QMessageBox.question(
+                self, '安全操作确认',
+                f"AI 请求执行高风险操作\n\n"
+                f"工具: {tool}\n"
+                f"风险等级: {risk}\n"
+                f"参数: {args}\n\n"
+                f"是否允许执行？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No)   # 默认 No —— 与 fail-closed 的口径一致
+
+            approved = reply == QMessageBox.Yes
+            worker.deliver_approval(request_id, {
+                "approved": approved,
+                "reason": "gui_user" if approved else "gui_denied",
+            })
+        finally:
+            worker.note_progress()
+            self._watchdog.start()
 
     def _on_stream_chunk(self, chunk: str):
         self._streaming_text += chunk
@@ -1221,11 +1252,6 @@ class ChatWindow(QDialog):
 
     def _do_security_report(self):
         """AI 生成安全分析报告 (使用工具获取实时数据)"""
-        router = self._get_router()
-        self._ensure_tools()
-        tool_schemas = self._tool_schemas if self._tool_registry else None
-        tool_registry = self._tool_registry if self._tool_registry else None
-
         state = self.controller.get_state()
         sec_level = state.get('sec_level', 'safe')
         threats = state.get('threat_count', 0)
@@ -1242,29 +1268,14 @@ class ChatWindow(QDialog):
         )
         self._add_message(summary, 'system')
 
-        if router and router.available_count > 0:
+        if self._agent and self._agent.llm.available_count > 0:
             prompt = (
                 "请调用安全工具获取实时数据，然后生成一份简洁的安全分析报告（100字以内）:\n"
                 "先调用 scan_network + check_firewall + get_system_state，"
                 "然后根据结果给出: 1)总体评价 2)主要风险 3)优先处理事项"
             )
-            messages = [
-                {"role": "system", "content": SECURITY_AGENT_PROMPT},
-                {"role": "user", "content": prompt},
-            ]
-
-            self._is_processing = True
-            self._input_bar.set_enabled(False)
             analysis_bubble = self._add_message('AI 分析中...', 'ai')
-
-            worker = LLMWorker(router, messages, tool_schemas, tool_registry, self)
-            worker.streaming.connect(
-                lambda chunk: self._update_bubble_text(
-                    analysis_bubble,
-                    analysis_bubble._text.replace('AI 分析中...', '') + chunk))
-            worker.finished.connect(
-                lambda text, ok: self._on_report_done(text, ok, analysis_bubble))
-            worker.start()
+            self._run_agent_task(prompt, analysis_bubble, self._on_report_done)
         else:
             self._add_message(
                 '配置 AI 模型后可获得智能安全分析报告。', 'system')
@@ -1279,11 +1290,6 @@ class ChatWindow(QDialog):
 
     def _do_fix_advice(self):
         """获取安全修复建议 (使用工具分析)"""
-        router = self._get_router()
-        self._ensure_tools()
-        tool_schemas = self._tool_schemas if self._tool_registry else None
-        tool_registry = self._tool_registry if self._tool_registry else None
-
         state = self.controller.get_state()
         issues = []
         if not state.get('firewall_on', True):
@@ -1311,28 +1317,13 @@ class ChatWindow(QDialog):
         issues_text = '\n'.join(f'  - {i}' for i in issues)
         self._add_message(f'发现以下问题:\n{issues_text}', 'system')
 
-        if router and router.available_count > 0:
+        if self._agent and self._agent.llm.available_count > 0:
             prompt = (
                 f"用户的系统存在以下安全问题:\n{issues_text}\n\n"
                 f"先调用相关工具确认问题严重性，然后给出具体可操作的修复建议。"
             )
-            messages = [
-                {"role": "system", "content": SECURITY_AGENT_PROMPT},
-                {"role": "user", "content": prompt},
-            ]
-
-            self._is_processing = True
-            self._input_bar.set_enabled(False)
             fix_bubble = self._add_message('生成修复方案中...', 'ai')
-
-            worker = LLMWorker(router, messages, tool_schemas, tool_registry, self)
-            worker.streaming.connect(
-                lambda chunk: self._update_bubble_text(
-                    fix_bubble,
-                    fix_bubble._text.replace('生成修复方案中...', '') + chunk))
-            worker.finished.connect(
-                lambda text, ok: self._on_report_done(text, ok, fix_bubble))
-            worker.start()
+            self._run_agent_task(prompt, fix_bubble, self._on_report_done)
         else:
             fix_lines = ['修复建议:']
             if not state.get('firewall_on', True):
@@ -1343,24 +1334,37 @@ class ChatWindow(QDialog):
 
     # 看门狗
     def _watchdog_check(self):
-        """防止 _is_processing 永久卡死"""
-        if self._is_processing and self._worker:
-            import time
-            if hasattr(self._worker, '_start_time'):
-                elapsed = time.time() - self._worker._start_time
-                if elapsed > 35:
-                    self.logger.warning(f"LLM Worker 超时 ({elapsed:.0f}s)，强制终止")
-                    if self._worker.isRunning():
-                        self._worker.terminate()
-                    self._on_ai_response("AI 响应超时，请稍后重试。", False)
+        """防止 _is_processing 永久卡死。
+
+        语义已从「总时长超时」改成「**无进展**超时」—— 每收到一个事件就重置计时。
+        并且优先**协作取消**而不是 terminate()：QThread.terminate() 在 Windows 上是
+        TerminateThread，会在任意字节码边界撕断线程；如果那一刻正在写 SQLite
+        checkpoint，就会留下半写状态。
+
+        好在架构上本来就安全：图只在 approval 节点中断，那是个干净的 checkpoint
+        边界，tools 节点尚未开始，所以不存在「工具执行到一半」的持久化状态。
+        """
+        if not (self._is_processing and self._worker):
+            return
+        if self._worker.waiting_for_approval:
+            return   # 人还没点，不算卡死
+        if self._worker.seconds_since_progress > 35:
+            self.logger.warning(
+                f"LLM Worker 无进展 {self._worker.seconds_since_progress:.0f}s，请求取消")
+            self._worker.request_cancel()
+            if not self._worker.wait(3000):
+                self.logger.warning("协作取消失败，强制终止线程")
+                self._worker.terminate()
+            self._on_ai_response("AI 响应超时，请稍后重试。", False)
 
     # 窗口事件
     def closeEvent(self, event):
         self._watchdog.stop()
         self._save_to_kb()
         if self._worker and self._worker.isRunning():
-            self._worker.terminate()
-            self._worker.wait(2000)
+            self._worker.request_cancel()
+            if not self._worker.wait(3000):
+                self._worker.terminate()
         super().closeEvent(event)
 
 
