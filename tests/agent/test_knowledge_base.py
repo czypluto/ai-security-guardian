@@ -87,8 +87,8 @@ def _make_mock_store():
 def _patch_backends(monkeypatch, store):
     # KnowledgeBase 在 __init__ 里 `from .vector_store import create_vector_store`，
     # 运行时从模块取属性，所以 patch vector_store 模块级函数即可生效。
-    import agent.vector_store as vsmod
     import agent.knowledge_base as kbmod
+    import agent.vector_store as vsmod
     monkeypatch.setattr(vsmod, "create_vector_store", lambda cfg: store)
     monkeypatch.setattr(kbmod, "_create_embedding_fn", lambda cfg: (_fake_embed, "transformers"))
 

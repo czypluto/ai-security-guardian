@@ -30,11 +30,11 @@ import json
 import logging
 import os
 import subprocess
-import weakref
 import threading
 import urllib.error
 import urllib.request
 import uuid
+import weakref
 from typing import Optional
 
 logger = logging.getLogger("Guardian.MCP")

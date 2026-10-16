@@ -21,7 +21,6 @@ sys.modules.setdefault("ctypes", _mock_ctypes)
 
 from agent.bm25 import Bm25Index, rrf_fuse, rrf_scores, tokenize  # noqa: E402
 
-
 # ---------------- 切词 ----------------
 
 def test_tokenize_cjk_uses_overlapping_bigram():

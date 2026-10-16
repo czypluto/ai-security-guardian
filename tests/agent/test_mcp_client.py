@@ -18,7 +18,6 @@ from agent.mcp_client import (  # noqa: E402
     _split_command,
 )
 
-
 # ---- 命令行拆分 ----
 
 def test_split_simple_command():
@@ -147,6 +146,7 @@ def test_live_set_does_not_pin_managers_alive():
     每个实例都会被 atexit 强引用到进程结束（那是另一种泄漏）。
     这里用弱引用语义断言：对象被回收后不再留在集合里。"""
     import gc
+
     from agent import mcp_client
     from agent.mcp_client import MCPManager
 

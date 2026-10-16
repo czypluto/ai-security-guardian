@@ -44,7 +44,6 @@ class EmbedRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global _proc, _model
-    import torch
     from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
 
     if not os.path.isdir(MODEL_DIR):

@@ -9,7 +9,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from agent import c2_ports  # noqa: E402
 from agent.c2_ports import GUARDIAN_BLOCKED_PORTS, KNOWN_C2_PORTS, csv  # noqa: E402
 
 

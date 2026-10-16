@@ -1,5 +1,6 @@
 """在魔搭(Modelscope)上搜索 Qwen3-Embedding 模型的确切 ID。"""
 import json
+
 import requests
 
 
