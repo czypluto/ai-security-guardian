@@ -65,6 +65,10 @@ SUSPICIOUS_PACKAGES = MALWARE_PACKAGES + SECURITY_TOOLING_PACKAGES
 # Files that MUST exist and have valid content
 CRITICAL_FILES = [
     "agent/core.py",
+    # 真正的编排在这里：core.py 已退化为薄壳，状态图才是主循环
+    "agent/graph.py",
+    "agent/graph_model.py",
+    "agent/graph_tools.py",
     "agent/tools.py",
     "agent/sandbox.py",
     "agent/llm.py",

@@ -57,6 +57,95 @@ def _wait_until(predicate, timeout=5.0):
     return False
 
 
+class _FakeLLM:
+    available_count = 1
+
+
+class FakeAgent:
+    """产出预设事件的假 AgentCore，用来验证 worker 的事件翻译。"""
+
+    def __init__(self, events):
+        self._events = events
+        self.llm = _FakeLLM()
+        self.approval_callback = None
+        self.ephemeral_args = []
+
+    def run_stream(self, message, ephemeral=False):
+        self.ephemeral_args.append(ephemeral)
+        yield from self._events
+
+
+class TestEventTranslation:
+    """LLMWorker 把图的 custom 事件翻译成 Qt 信号。
+
+    打字机效果就靠这里：图把文本分多次给（{type: text, content: 增量}），
+    worker 必须逐块 emit，而不是攒成一段一次性发。
+    """
+
+    def test_incremental_text_becomes_multiple_signals(self, qapp):
+        agent = FakeAgent([
+            {"type": "text", "content": "安"},
+            {"type": "text", "content": "全"},
+        ])
+        worker = LLMWorker(agent, message="状态")
+        chunks = []
+        results = []
+        worker.streaming.connect(chunks.append)
+        worker.finished.connect(lambda text, ok: results.append((text, ok)))
+
+        worker.run()   # 直接跑，不启线程：主线程内直连信号会同步派发
+
+        assert chunks == ["安", "全"], "文本没有被逐块发出"
+        assert results == [("安全", True)]
+
+    def test_tool_events_become_signals(self, qapp):
+        agent = FakeAgent([
+            {"type": "tool_start", "name": "scan_network", "arguments": {"deep": True}},
+            {"type": "tool_result", "name": "scan_network", "result": '{"ok":true}'},
+            {"type": "text", "content": "完成"},
+        ])
+        worker = LLMWorker(agent, message="扫描")
+        calls, results_evt, done = [], [], []
+        worker.tool_call_signal.connect(lambda n, a: calls.append((n, a)))
+        worker.tool_result_signal.connect(lambda n, r: results_evt.append((n, r)))
+        worker.finished.connect(lambda t, ok: done.append((t, ok)))
+
+        worker.run()
+
+        assert calls == [("scan_network", '{"deep": true}')]
+        assert results_evt[0][0] == "scan_network"
+        assert done == [("完成", True)]
+
+    def test_error_event_fails_without_raising(self, qapp):
+        agent = FakeAgent([{"type": "error", "content": "API rate limit exceeded"}])
+        worker = LLMWorker(agent, message="x")
+        done = []
+        worker.finished.connect(lambda t, ok: done.append((t, ok)))
+
+        worker.run()
+
+        assert done and done[0][1] is False
+        assert "API rate limit exceeded" in done[0][0]
+
+    def test_ephemeral_flag_reaches_the_agent(self, qapp):
+        agent = FakeAgent([{"type": "text", "content": "报告"}])
+        worker = LLMWorker(agent, message="生成报告", ephemeral=True)
+        worker.finished.connect(lambda t, ok: None)
+
+        worker.run()
+
+        assert agent.ephemeral_args == [True]
+
+    def test_approval_callback_is_cleared_after_run(self, qapp):
+        agent = FakeAgent([{"type": "text", "content": "ok"}])
+        worker = LLMWorker(agent, message="x")
+        worker.finished.connect(lambda t, ok: None)
+
+        worker.run()
+
+        assert agent.approval_callback is None, "跑完后必须摘掉回调，避免悬空引用"
+
+
 class TestApprovalHandshake:
     def test_request_is_emitted_and_result_returned(self, qapp):
         worker = LLMWorker(agent=None)

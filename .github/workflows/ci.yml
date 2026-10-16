@@ -143,7 +143,7 @@ jobs:
         run: |
           # 镜像 ENTRYPOINT 是 python agent_cli.py, 需用 --entrypoint python 覆盖再传 -c
           docker run --rm --entrypoint python ai-security-guardian:ci-${{ github.sha }} \
-            -c "from agent.config import AgentConfig; from agent.core import AgentCore; print('Import OK')"
+            -c "from agent.config import AgentConfig; from agent.core import AgentCore; from agent.graph import build_graph, build_checkpointer; from agent.graph_model import GuardianChatModel; from agent.graph_tools import to_langchain_tools; print('Import OK')"
 
   # =============================================================
   #  Job 3: Windows 专属测试 (真实验证 Windows API 代码路径)
