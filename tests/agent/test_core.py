@@ -215,6 +215,35 @@ class TestRunBasic:
 
 # ---- run_stream() ----
 
+def _stream_events(*calls):
+    """构造 LLMRouter.chat_stream 的假实现：第 N 次调用 yield 第 N 组事件。
+
+    流式路径走的是 chat_stream 而不是 chat，所以 stream_output=True 的用例
+    必须把它也 mock 掉，否则会去打真实的网络端点。
+    """
+    seq = list(calls)
+    state = {"i": 0}
+
+    def _impl(*args, **kwargs):
+        idx = min(state["i"], len(seq) - 1)
+        state["i"] += 1
+        for event in seq[idx]:
+            yield event
+
+    return _impl
+
+
+def _text(chunk):
+    return {"type": "text", "content": chunk}
+
+
+def _tool_call_events(name, args_json, call_id="c1"):
+    return [{"type": "tool_call", "tool_call": {
+        "id": call_id,
+        "function": {"name": name, "arguments": args_json},
+    }}]
+
+
 class TestRunStream:
     """流式输出 ReAct 循环."""
 
@@ -228,17 +257,13 @@ class TestRunStream:
         )
         agent = AgentCore(config, tool_registry=_make_tool_registry())
 
-        with patch.object(agent.llm, 'chat') as mock_chat:
-            mock_chat.return_value = {
-                "_ok": True,
-                "choices": [{
-                    "message": {"role": "assistant", "content": "All secure"}
-                }]
-            }
+        with patch.object(agent.llm, 'chat_stream',
+                          side_effect=_stream_events([_text("All "), _text("secure")])):
             events = list(agent.run_stream("status check"))
             text_events = [e for e in events if e["type"] == "text"]
-            assert len(text_events) == 1
-            assert "All secure" in text_events[0]["content"]
+            # 逐 token：两个增量事件，拼起来才是完整回复
+            assert [e["content"] for e in text_events] == ["All ", "secure"]
+            assert "".join(e["content"] for e in text_events) == "All secure"
 
     def test_stream_yields_tool_events(self):
         config = AgentConfig(
@@ -251,34 +276,16 @@ class TestRunStream:
         registry = _make_tool_registry()
         agent = AgentCore(config, tool_registry=registry)
 
-        responses = [
-            {  # First: tool call
-                "_ok": True,
-                "choices": [{"message": {"role": "assistant",
-                    "tool_calls": [{"id": "c1", "function": {
-                        "name": "mock_tool", "arguments": '{"arg":"hello"}'
-                    }}]}
-                }]
-            },
-            {  # Second: final text
-                "_ok": True,
-                "choices": [{"message": {"role": "assistant",
-                    "content": "Done checking"}}]
-            },
-        ]
-        call_idx = [0]
-        def chat_side_effect(*args, **kwargs):
-            resp = responses[call_idx[0]]
-            call_idx[0] += 1
-            return resp
-
-        with patch.object(agent.llm, 'chat', side_effect=chat_side_effect) as mock_chat:
+        with patch.object(agent.llm, 'chat_stream',
+                          side_effect=_stream_events(
+                              _tool_call_events("mock_tool", '{"arg":"hello"}'),
+                              [_text("Done checking")])) as mock_stream:
             events = list(agent.run_stream("check"))
             event_types = [e["type"] for e in events]
             assert event_types == ["tool_start", "tool_result", "text"]
-            assert mock_chat.call_count == 2
+            assert mock_stream.call_count == 2
 
-        # 工具结果必须回喂给模型：第二轮 prompt 的最后一条是 ToolMessage
+        # 工具结果必须回喂给模型
         assert "hello" in json.dumps(events[1]["result"], ensure_ascii=False)
 
     def test_stream_handles_llm_error(self):
@@ -292,7 +299,11 @@ class TestRunStream:
         )
         agent = AgentCore(config)
 
-        with patch.object(agent.llm, 'chat') as mock_chat:
+        # 流式路径首字未出就失败 -> 回退到 invoke 路径；两条都失败才是真失败
+        with patch.object(agent.llm, 'chat_stream',
+                          side_effect=_stream_events(
+                              [{"type": "error", "content": "API rate limit exceeded"}])), \
+             patch.object(agent.llm, 'chat') as mock_chat:
             mock_chat.return_value = {
                 "_ok": False,
                 "_error": "API rate limit exceeded"
@@ -363,7 +374,9 @@ def _gated_agent(handler, **config_overrides):
     config = AgentConfig(
         providers=[_make_provider()],
         max_iterations=3,
-        stream_output=True,
+        # 这些用例测的是审批闸门，不是流式，走 invoke 路径即可
+        # （流式路径要 mock chat_stream，见 TestRunStream）
+        stream_output=False,
         knowledge_base_enabled=False,
         checkpoint_backend="memory",
         **config_overrides,

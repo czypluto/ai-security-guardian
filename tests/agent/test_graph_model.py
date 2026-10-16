@@ -142,3 +142,95 @@ class TestGuardianChatModel:
         router = FakeRouter()
         GuardianChatModel(router=router, max_tokens=256).invoke([HumanMessage(content="x")])
         assert router.calls[0]["max_tokens"] == 256
+
+
+class StreamingFakeRouter(FakeRouter):
+    """额外提供 chat_stream 的假 router（yield 事件字典）。"""
+
+    def __init__(self, events, response=None):
+        super().__init__(response)
+        self.events = events
+        self.stream_calls = []
+
+    def chat_stream(self, messages, tools=None, max_tokens=1024, temperature=0.7):
+        self.stream_calls.append({"messages": messages, "tools": tools})
+        for event in self.events:
+            yield event
+
+
+def _merge(chunks):
+    merged = chunks[0]
+    for chunk in chunks[1:]:
+        merged = merged + chunk
+    return merged
+
+
+def _text(content):
+    return {"type": "text", "content": content}
+
+
+def _tool_call(name, args_json, call_id):
+    return {"type": "tool_call", "tool_call": {
+        "id": call_id, "function": {"name": name, "arguments": args_json}}}
+
+
+class TestGuardianChatModelStream:
+    """逐 token 流式路径。
+
+    这条路径**没有多 provider 故障转移**（chat_stream 只取 _active_idx 那一个
+    provider），所以「首字未出就失败时回退到 _generate」的兜底是它的安全网。
+    """
+
+    def test_yields_text_chunks_incrementally(self):
+        router = StreamingFakeRouter([_text("He"), _text("llo")])
+        chunks = list(GuardianChatModel(router=router).stream([HumanMessage(content="hi")]))
+
+        # 关键：确实分了多次吐出，而不是一次性给整段
+        assert [c.content for c in chunks if c.content] == ["He", "llo"]
+        assert _merge(chunks).content == "Hello"
+        # langchain 会在末尾补一个空 chunk（携带 usage 之类）；无害，
+        # graph._stream_completion 只对非空内容发事件。这里断言它不携带文本。
+        assert all(not c.content for c in chunks[2:])
+
+    def test_tool_calls_arrive_as_one_final_chunk(self):
+        router = StreamingFakeRouter([
+            _text("thinking"),
+            _tool_call("run_command", '{"command":"ipconfig"}', "c1"),
+            _tool_call("scan_network", '{"deep":true}', "c2"),
+        ])
+        merged = _merge(list(GuardianChatModel(router=router).stream(
+            [HumanMessage(content="hi")])))
+
+        # 两个 tool call 不能互相吞掉 —— 所以 chunk 里显式给了 index
+        assert [tc["name"] for tc in merged.tool_calls] == ["run_command", "scan_network"]
+        assert merged.tool_calls[0]["args"] == {"command": "ipconfig"}
+        assert merged.content == "thinking"
+
+    def test_error_before_any_token_falls_back_to_generate(self):
+        """首字未出就失败 -> 回退到 chat（那里才有故障转移）。"""
+        router = StreamingFakeRouter([{"type": "error", "content": "boom"}])
+        router.response = {
+            "_ok": True,
+            "choices": [{"message": {"content": "recovered"}}],
+        }
+        chunks = list(GuardianChatModel(router=router).stream([HumanMessage(content="hi")]))
+
+        assert _merge(chunks).content == "recovered"
+        assert len(router.calls) == 1, "没有回退到 _generate"
+
+    def test_error_after_content_does_not_restart(self):
+        """已经吐过字就不再回退 —— 重来一遍用户会看到重复文本。"""
+        router = StreamingFakeRouter([_text("partial"), {"type": "error", "content": "boom"}])
+        chunks = list(GuardianChatModel(router=router).stream([HumanMessage(content="hi")]))
+
+        assert _merge(chunks).content == "partial"
+        assert router.calls == [], "不该回退到 _generate"
+
+    def test_bind_tools_schemas_reach_chat_stream(self):
+        router = StreamingFakeRouter([_text("ok")])
+        schemas = [{"type": "function", "function": {"name": "t", "description": "d",
+                                                     "parameters": {"type": "object",
+                                                                    "properties": {}}}}]
+        list(GuardianChatModel(router=router).bind_tools(schemas).stream(
+            [HumanMessage(content="hi")]))
+        assert router.stream_calls[0]["tools"] == schemas

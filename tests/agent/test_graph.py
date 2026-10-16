@@ -11,8 +11,8 @@ import uuid
 from unittest.mock import MagicMock
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langgraph.types import Command
 from pydantic import ConfigDict
 
@@ -69,6 +69,24 @@ class ScriptedChatModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=fresh)])
 
 
+class StreamingScriptedModel(ScriptedChatModel):
+    """把脚本文本按字符切开逐块吐出，用来验证事件契约支持增量。"""
+
+    @property
+    def _llm_type(self) -> str:
+        return "scripted-streaming"
+
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        self.calls.append(list(messages))
+        src = self.script[min(len(self.calls) - 1, len(self.script) - 1)]
+        text = src.content if isinstance(src.content, str) else ""
+        for ch in text:
+            yield ChatGenerationChunk(message=AIMessageChunk(content=ch))
+        if src.tool_calls:
+            yield ChatGenerationChunk(message=AIMessageChunk(
+                content="", tool_calls=[dict(tc) for tc in src.tool_calls]))
+
+
 def ai_tool_call(name: str, args: dict, call_id: str = "c1") -> AIMessage:
     return AIMessage(content="", tool_calls=[
         {"name": name, "args": args, "id": call_id, "type": "tool_call"}])
@@ -103,10 +121,11 @@ def make_registry(run_command_handler=None) -> ToolRegistry:
 class Harness:
     """把「跑图 / 处理中断 / 恢复」这套重复动作收在一处。"""
 
-    def __init__(self, config, registry, script, thread_id="t-test"):
+    def __init__(self, config, registry, script, thread_id="t-test",
+                 model_cls=ScriptedChatModel):
         self.config = config
         self.registry = registry
-        self.model = ScriptedChatModel(script=script)
+        self.model = model_cls(script=script)
         self.app = build_graph(config, registry, self.model)
         self.state_config = {
             "configurable": {"thread_id": thread_id},
@@ -305,6 +324,36 @@ class TestApprovalPolicy:
         config = make_config(approval_mode="interactive")
         assert resolve_approval_mode(config, interactive_available=False) == "auto_reject"
         assert resolve_approval_mode(config, interactive_available=True) == "interactive"
+
+
+class TestStreamingContract:
+    """流式路径下事件契约保持不变：仍是 {type: text, content: <增量>}。
+
+    只是从「一次给整段」变成「分多次给增量」—— CLI 顺序写出即得全文，
+    GUI 累积后渲染即打字机效果，两边都不用改。
+    """
+
+    def test_text_arrives_as_multiple_events(self):
+        h = Harness(make_config(), make_registry(), [AIMessage(content="安全")],
+                    model_cls=StreamingScriptedModel)
+        h.run("状态如何")
+        texts = [e["content"] for e in h.events_of("text")]
+        assert len(texts) > 1, "文本应分多次吐出，而不是一次性整段"
+        assert "".join(texts) == "安全"
+        assert h.final_text() == "安全"
+
+    def test_streamed_tool_calls_still_route_to_approval(self):
+        """流式返回的 tool_calls 也要能正常触发审批闸门。"""
+        handler = MagicMock(return_value={"ok": True})
+        h = Harness(
+            make_config(), make_registry(handler),
+            [ai_tool_call("run_command", {"command": "ipconfig"}),
+             AIMessage(content="done")],
+            model_cls=StreamingScriptedModel,
+        )
+        asked = h.run("跑一下", decisions=[{"approved": True}])
+        assert [a["tool"] for a in asked] == ["run_command"]
+        assert handler.call_count == 1
 
 
 class TestRecursionLimit:

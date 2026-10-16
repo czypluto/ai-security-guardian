@@ -23,12 +23,13 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
+    AIMessageChunk,
     BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import ConfigDict
 
 logger = logging.getLogger("Guardian.GraphModel")
@@ -235,6 +236,80 @@ class GuardianChatModel(BaseChatModel):
         return ChatResult(
             generations=[ChatGeneration(message=response_to_ai_message(resp))]
         )
+
+    def _stream(
+        self,
+        messages: list[BaseMessage],
+        stop: Optional[list[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ):
+        """逐 token 流式。
+
+        这条路径**没有多 provider 故障转移** —— ``LLMRouter.chat_stream`` 只取
+        ``_active_idx`` 那一个 provider，不像 ``chat`` 会轮询换人、也会跳过冷却中的
+        provider。所以这里保留了兜底：**首字未出就失败**时退回 ``_generate``，
+        让 ``LLMRouter.chat`` 去做它该做的故障转移。一旦已经吐过内容就不再回退 ——
+        重来一遍会让用户看到重复文本。
+
+        tool_calls 由 ``chat_stream`` 在 finish_reason 处一次性吐出，这里把它包成
+        末尾的一个 chunk；调用方用 ``+`` 累加即可得到完整的 AIMessage。
+        """
+        tools = kwargs.get("tools", self.bound_tools)
+
+        saw_content = False
+        tool_calls_raw: list[dict] = []
+        stream_error = None
+
+        for event in self.router.chat_stream(
+            messages=messages_to_dicts(messages),
+            tools=list(tools) if tools else None,
+            max_tokens=self.max_tokens,
+        ):
+            etype = event.get("type", "")
+            if etype == "text":
+                saw_content = True
+                piece = event.get("content", "")
+                if run_manager:
+                    run_manager.on_llm_new_token(piece)
+                yield ChatGenerationChunk(message=AIMessageChunk(content=piece))
+            elif etype == "tool_call":
+                tool_calls_raw.append(event.get("tool_call") or {})
+            elif etype == "error":
+                stream_error = event.get("content", "AI 服务异常")
+                break
+
+        if stream_error and not saw_content and not tool_calls_raw:
+            # 逐字尚未开始 -> 回退到 invoke 路径，把故障转移拿回来
+            result = self._generate(messages, stop, run_manager, **kwargs)
+            for gen in result.generations:
+                yield ChatGenerationChunk(message=_to_chunk(gen.message))
+            return
+
+        if tool_calls_raw:
+            chunks = []
+            for i, tc in enumerate(tool_calls_raw):
+                fn = tc.get("function") or {}
+                chunks.append({
+                    "name": fn.get("name", ""),
+                    "args": fn.get("arguments") or "{}",
+                    "id": tc.get("id", ""),
+                    "index": i,          # 显式给 index，累加时不会互相吞掉
+                    "type": "tool_call_chunk",
+                })
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(content="", tool_call_chunks=chunks))
+
+
+def _to_chunk(message: BaseMessage) -> AIMessageChunk:
+    """把完整消息转成可累加的 chunk（回退路径用）。"""
+    if isinstance(message, AIMessageChunk):
+        return message
+    tool_calls = list(getattr(message, "tool_calls", None) or [])
+    return AIMessageChunk(
+        content=_stringify(getattr(message, "content", "")),
+        tool_calls=tool_calls,
+    )
 
 
 def build_chat_model(router, config=None) -> GuardianChatModel:

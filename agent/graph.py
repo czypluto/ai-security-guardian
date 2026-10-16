@@ -81,6 +81,42 @@ class GuardianState(MessagesState):
 
 # ---- 事件写出 ----
 
+def _as_text(content) -> str:
+    """把消息内容拍平成字符串（content 可能是 str，也可能是多模态 block 列表）。"""
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return str(content)
+
+
+def _stream_completion(bound, prompt_messages) -> AIMessage:
+    """流式取一次补全：逐块把文本推给 UI，末尾组装成完整 AIMessage。
+
+    事件仍是 ``{"type": "text", "content": <增量>}`` —— 契约不变，只是从
+    「一次给整段」变成「分多次给增量」。两个消费方都天然正确：CLI 顺序写出即得全文，
+    GUI 累积后渲染即打字机效果。所以 display_stream 与 _drive 都一行不用改。
+    """
+    accumulated = None
+    for chunk in bound.stream(prompt_messages):
+        accumulated = chunk if accumulated is None else accumulated + chunk
+        piece = _as_text(chunk.content)
+        if piece:
+            _write({"type": "text", "content": piece})
+
+    if accumulated is None:
+        return AIMessage(content="")
+    return AIMessage(
+        content=_as_text(accumulated.content),
+        tool_calls=list(getattr(accumulated, "tool_calls", None) or []),
+    )
+
+
 def _write(payload: dict) -> None:
     """向 custom 流写一个事件。
 
@@ -320,15 +356,20 @@ def make_agent_node(config, registry, model, skills=None):
         # 每次现取 schema：MCP 工具可能在 AgentCore 构造之后才注册进来
         schemas = registry.get_schemas()
         bound = model.bind_tools(schemas) if schemas else model
-        ai_message = bound.invoke(prompt_messages)
+
+        streaming = bool(getattr(config, "stream_output", True))
+        if streaming:
+            ai_message = _stream_completion(bound, prompt_messages)
+        else:
+            ai_message = bound.invoke(prompt_messages)
 
         update: dict = {"messages": [ai_message], "iteration": iteration + 1}
         if not getattr(ai_message, "tool_calls", None):
-            text = ai_message.content
-            if not isinstance(text, str):
-                text = str(text)
+            text = _as_text(ai_message.content)
             update["final_text"] = text
-            _write({"type": "text", "content": text})
+            # 流式路径已在 _stream_completion 里逐块发过，这里不能再发一遍
+            if not streaming:
+                _write({"type": "text", "content": text})
         return update
 
     return agent
