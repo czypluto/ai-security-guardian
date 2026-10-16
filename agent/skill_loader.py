@@ -25,6 +25,32 @@ from typing import Optional
 logger = logging.getLogger("Guardian.Skills")
 
 
+def _trigger_score(trigger: str, text: str) -> int:
+    """一个触发词对用户输入的匹配强度；0 表示不匹配。
+
+    两档：
+
+    * **连续子串**命中 -> 高分。这是最可靠的信号。
+    * **字符按序散落**（子序列）命中 -> 低分。中文里修饰语常常插在词中间：
+      触发词「扫描网络」理应命中「扫描我的网络」，而纯子串匹配做不到。
+      这一条直接来自实测 —— 原先「扫描我的网络」匹配不到任何技能。
+
+    子序列只对长度 >= 3 的触发词放开。否则「检查」这类两字词在几乎任何中文
+    句子里都能"按序出现"，等于没有约束。
+    """
+    t = (trigger or "").strip().lower()
+    if not t or not text:
+        return 0
+    if t in text:
+        return 1000 + len(t)
+    if len(t) < 3:
+        return 0
+    cursor = iter(text)
+    if all(ch in cursor for ch in t):
+        return len(t)
+    return 0
+
+
 @dataclass
 class Skill:
     name: str
@@ -174,13 +200,27 @@ class SkillManager:
         return self._skills.get(name)
 
     def match_triggers(self, user_input: str) -> Optional[Skill]:
-        """Find a skill whose triggers match the user input."""
-        user_lower = user_input.lower()
+        """选出一轮里最匹配的技能。
+
+        取**得分最高**者，而不是第一个命中者。原实现是「第一个命中即返回」，
+        于是激活哪个技能取决于 dict 的迭代顺序 —— 触发词一旦有重复，结果就
+        不可预期（实测「可疑进程」曾同时属于两个技能）。
+
+        现在按 (得分降序, 技能名) 排序，同样的输入永远得到同样的结果。
+        """
+        text = (user_input or "").lower()
+        if not text:
+            return None
+
+        scored = []
         for skill in self._skills.values():
-            for trigger in skill.triggers:
-                if trigger.lower() in user_lower:
-                    return skill
-        return None
+            score = max((_trigger_score(t, text) for t in skill.triggers), default=0)
+            if score:
+                scored.append((score, skill.name, skill))
+        if not scored:
+            return None
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return scored[0][2]
 
     def build_skills_prompt(self, matched_skill: Skill = None) -> str:
         """Build the skills section of the system prompt."""

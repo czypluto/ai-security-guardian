@@ -318,6 +318,8 @@ Examples:
     parser.add_argument("--model", "-m", default=None, help="Force specific LLM provider")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="自动批准 run_command / install_skill 等敏感工具，不再逐次确认")
+    parser.add_argument("--lockdown", action="store_true",
+                        help="启动自检发现 CRITICAL 问题就拒绝启动（也可在配置里开 agent.lockdown_on_critical）")
     args = parser.parse_args()
 
     setup_logging()
@@ -357,6 +359,19 @@ Examples:
                   f"嵌入={kb._embed_type}, 向量库={kb._vector_db_name}\033[0m", file=sys.stderr)
         except Exception as e:
             print(f"  \033[90m知识库初始化跳过: {e}\033[0m", file=sys.stderr)
+
+    # 启动熔断（opt-in）：默认关闭，开了才在严重问题面前拒绝启动
+    if args.lockdown or config.lockdown_on_critical:
+        from agent.self_audit import SelfAuditor
+        fatal = [i for i in SelfAuditor().quick_check().get("issues", [])
+                 if i.get("severity") == "CRITICAL"]
+        if fatal:
+            print("\n  \033[31m🚫 启动已中止：自检发现严重问题，且已开启熔断\033[0m", file=sys.stderr)
+            for issue in fatal[:8]:
+                print(f"     🔴 {issue.get('issue') or issue.get('file') or issue}", file=sys.stderr)
+            print("\n     确认无误后：去掉 --lockdown；若只是改过代码导致基线过期，"
+                  "运行 python generate_integrity_manifest.py 重建基线即可。\n", file=sys.stderr)
+            sys.exit(2)
 
     agent = AgentCore(config, tools, knowledge_base=kb)
 

@@ -66,6 +66,11 @@ class AgentConfig:
     checkpoint_backend: str = "sqlite"   # sqlite | memory
     checkpoint_db_path: str = ""         # 空 = <项目根>/data/guardian_graph.sqlite
 
+    # 启动熔断：开启后，启动自检发现 CRITICAL 问题就**拒绝启动**。
+    # 默认关闭 —— 用户可能正在调试，无脑拒绝启动会很烦人。
+    # 这是此前文档宣称有、而代码里根本没有的那个「熔断」。
+    lockdown_on_critical: bool = False
+
     # KB 上下文检索的超时预算（秒）；0 = 不限。
     # GUI 靠它防止嵌入服务冷启动（约 20s）拖慢首条回复，CLI 顺带获得同样能力。
     kb_context_timeout: float = 4.0
@@ -225,6 +230,7 @@ class AgentConfig:
             checkpoint_backend=agent_cfg.get("checkpoint_backend", "sqlite"),
             checkpoint_db_path=agent_cfg.get("checkpoint_db_path", "") or "",
             kb_context_timeout=agent_cfg.get("kb_context_timeout", 4.0),
+            lockdown_on_critical=agent_cfg.get("lockdown_on_critical", False),
         )
 
 

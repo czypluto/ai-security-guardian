@@ -593,6 +593,36 @@ def check_admin_privileges(logger):
         logger.warning("=" * 50)
 
 
+def startup_lockdown_check(config: dict) -> list:
+    """启动熔断：配置开启时，自检发现 CRITICAL 问题就拒绝启动。
+
+    返回致命问题列表；空列表 = 可以继续启动。
+
+    默认**关闭**（`agent.lockdown_on_critical`）。不开的时候直接返回，不会额外
+    跑一次自检 —— 常规告警由 `_run_startup_integrity_check` 负责，那条路径
+    只提示、不阻止启动（用户可能正在调试）。
+
+    「熔断」这个词以前只出现在 README 里，代码里没有任何实现。现在是真实的了。
+    """
+    try:
+        if not (config.get('agent') or {}).get('lockdown_on_critical', False):
+            return []
+    except AttributeError:
+        return []
+
+    try:
+        from agent.self_audit import SelfAuditor
+    except ImportError:
+        return []
+
+    try:
+        result = SelfAuditor().quick_check()
+    except Exception:
+        return []   # 自检本身跑不起来，不该成为拒绝启动的理由
+
+    return [i for i in result.get("issues", []) if i.get("severity") == "CRITICAL"]
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='🛡️ AI 网络安全管家 - PC Agent',
@@ -620,6 +650,20 @@ def main():
 
     # 管理员权限检查
     check_admin_privileges(controller.logger)
+
+    # 启动熔断（opt-in）：开了 agent.lockdown_on_critical 就在这里挡住
+    fatal = startup_lockdown_check(controller.config)
+    if fatal:
+        print()
+        print("  \033[31m🚫 启动已中止：自检发现严重问题，且已开启熔断\033[0m")
+        for issue in fatal[:8]:
+            print(f"     🔴 {issue.get('issue') or issue.get('file') or issue}")
+        print()
+        print("     确认无误后：把配置里的 agent.lockdown_on_critical 改回 false；")
+        print("     若只是改过代码导致基线过期，运行 python generate_integrity_manifest.py")
+        print("     重建基线即可。")
+        print()
+        sys.exit(2)
 
     # GUI 模式 — 统一单体应用，关闭 pystray
     if args.gui:

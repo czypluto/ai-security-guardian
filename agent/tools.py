@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -95,6 +96,7 @@ APPROVAL_REQUIRED_TOOLS = frozenset({
     "run_command",
     "install_skill",
     "recommend_mcp_server",
+    "terminate_process",
 })
 
 
@@ -175,6 +177,65 @@ def _scan_network() -> dict:
 
 def _scan_processes() -> dict:
     return _get_module("process").scan()
+
+
+# 绝不允许 Agent 终止的进程 —— 系统关键进程，杀掉会立刻导致蓝屏、强制重启、
+# 或网络/认证中断。这是**无论用户批不批准**都成立的硬保护。
+PROTECTED_PROCESS_NAMES = {
+    "system", "registry", "memory compression",
+    "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+    "services.exe", "lsass.exe", "svchost.exe", "fontdrvhost.exe",
+    "dwm.exe", "explorer.exe",
+}
+
+
+def _terminate_process(pid: int, reason: str = "") -> dict:
+    """终止指定进程。
+
+    这是项目里**唯一**能让 Agent 主动改变系统运行状态的工具，因此它标注了
+    `requires_approval=True`，会经过 approval 节点的 interrupt() 等用户确认 ——
+    闸门在这里是必需条件，不是可选项。
+
+    在闸门之外还有一层硬保护：系统关键进程直接拒绝，不因为用户点了"批准"就放行。
+    「用户批准了」不等于「这件事该做」。
+    """
+    try:
+        import psutil
+    except ImportError:
+        return {"error": "psutil 不可用"}
+
+    if not isinstance(pid, int) or pid <= 4:
+        return {"error": f"拒绝：PID {pid} 属于系统保留进程"}
+
+    if pid == os.getpid():
+        return {"error": "拒绝：不能终止守护进程自身"}
+
+    try:
+        proc = psutil.Process(pid)
+        name = (proc.name() or "").lower()
+    except psutil.NoSuchProcess:
+        return {"error": f"进程 {pid} 不存在"}
+    except psutil.AccessDenied:
+        return {"error": f"读取进程 {pid} 被拒绝（需要管理员权限）"}
+
+    if name in PROTECTED_PROCESS_NAMES:
+        return {
+            "error": f"拒绝：{name} (PID {pid}) 是系统关键进程，终止它会导致系统不稳定。",
+            "protected": True,
+        }
+
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except psutil.TimeoutExpired:
+            proc.kill()   # 不体面退出就强杀
+        logger.warning("已终止进程: %s (PID %s) — %s", name, pid, reason or "未说明")
+        return {"success": True, "pid": pid, "name": name, "reason": reason}
+    except psutil.AccessDenied:
+        return {"error": f"终止进程 {pid} 被拒绝（需要管理员权限）"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"终止进程失败: {e}"}
 
 
 def _check_firewall() -> dict:
@@ -264,6 +325,29 @@ def create_tool_registry() -> ToolRegistry:
                     "etc.) and processes exceeding CPU/memory thresholds.",
         parameters={},
         handler=_scan_processes,
+    ))
+
+    registry.register(ToolDef(
+        name="terminate_process",
+        description="Terminate a running process by PID. Only use this for "
+                    "processes you have already identified as malicious. "
+                    "Requires explicit user approval, and refuses to touch "
+                    "critical system processes (lsass, csrss, winlogon, ...).",
+        parameters={
+            "pid": {
+                "type": "integer",
+                "description": "Process ID to terminate",
+                "required": True,
+            },
+            "reason": {
+                "type": "string",
+                "description": "Why this process should be terminated",
+            },
+        },
+        handler=_terminate_process,
+        # 唯一能让 Agent 改变系统运行状态的工具 —— 执行前必须人工批准
+        requires_approval=True,
+        risk_level="sensitive",
     ))
 
     registry.register(ToolDef(

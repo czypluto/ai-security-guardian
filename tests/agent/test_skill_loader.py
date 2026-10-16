@@ -94,6 +94,86 @@ def skills():
     return SkillManager([str(REAL_SKILLS_DIR), str(REAL_SKILLS_DIR / "user")]).load_all()
 
 
+class TestTriggerMatching:
+    """触发词匹配：子串优先，中文允许字符按序散落。"""
+
+    @pytest.fixture
+    def manager(self, skill_tree):
+        return SkillManager([str(skill_tree)])
+
+    def test_exact_substring_matches(self, manager):
+        manager.load_all()
+        assert manager.match_triggers("say hello now").name == "real-skill"
+
+    def test_no_match_returns_none(self, manager):
+        manager.load_all()
+        assert manager.match_triggers("今天天气不错") is None
+
+    def test_empty_input_returns_none(self, manager):
+        manager.load_all()
+        assert manager.match_triggers("") is None
+        assert manager.match_triggers(None) is None
+
+    def test_short_trigger_does_not_subsequence_match(self):
+        """两字触发词不做子序列匹配 —— 否则「检查」会在几乎任何句子里命中。"""
+        from agent.skill_loader import _trigger_score
+
+        assert _trigger_score("检查", "检查一下") == 1000 + 2   # 连续命中 OK
+        assert _trigger_score("检查", "捡到查了") == 0          # 散落不认
+
+    def test_long_cjk_trigger_allows_interleaved_modifiers(self):
+        """「扫描网络」应当命中「扫描我的网络」—— 修饰语插在词中间。
+
+        这是实测出来的：纯子串匹配下这句话匹配不到任何技能。
+        """
+        from agent.skill_loader import _trigger_score
+
+        assert _trigger_score("扫描网络", "扫描我的网络") > 0
+        assert _trigger_score("扫描网络", "扫描网络") >= 1000
+
+    def test_best_score_wins_not_first_hit(self, tmp_path):
+        """得分最高的技能胜出，而不是迭代顺序里的第一个。
+
+        原实现「第一个命中即返回」，触发词一重复结果就不可预期。
+        """
+        _write(tmp_path / "a.md", """\
+            ---
+            name: aaa-generic
+            description: 泛泛命中
+            triggers:
+              - "备份"
+            ---
+            """)
+        _write(tmp_path / "b.md", """\
+            ---
+            name: bbb-specific
+            description: 精确命中
+            triggers:
+              - "清理备份"
+            ---
+            """)
+        manager = SkillManager([str(tmp_path)])
+        manager.load_all()
+        # 两个都命中，但「清理备份」是连续子串 -> 高分，应当胜出
+        assert manager.match_triggers("帮我清理备份").name == "bbb-specific"
+
+    def test_result_is_deterministic_on_ties(self, tmp_path):
+        """同分时按技能名排序，同样的输入永远给同样的结果。"""
+        for name in ("zeta", "alpha"):
+            _write(tmp_path / f"{name}.md", f"""\
+                ---
+                name: {name}
+                description: d
+                triggers:
+                  - "备份"
+                ---
+                """)
+        manager = SkillManager([str(tmp_path)])
+        manager.load_all()
+        assert manager.match_triggers("备份") is not None
+        assert manager.match_triggers("备份").name == "alpha"
+
+
 class TestRealSkillsDirectory:
     """对仓库里真实的 skills/ 施加约束。"""
 
