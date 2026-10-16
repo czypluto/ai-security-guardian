@@ -66,6 +66,11 @@ class AgentCore:
                 description=mcp_tool.description,
                 parameters=mcp_tool.input_schema.get("properties", {}),
                 handler=lambda args, tn=mcp_tool.name: self._mcp_tool_handler(tn, args),
+                # 外部 MCP server 可执行任意代码 —— 标注为最高风险等级。
+                # 但 requires_approval 保持默认 False：审批名单锁定在三个内置工具上
+                # （见 tool 定义处的 APPROVAL_REQUIRED_TOOLS），MCP 工具靠
+                # installer 的安装前扫描 + 用户手工 review 把关。
+                risk_level="dangerous",
             ))
         mc = self.mcp.total_tools
         if mc:

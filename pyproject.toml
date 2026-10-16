@@ -42,6 +42,18 @@ requests = ">=2.28.0"
 # Windows 安全 API
 pywin32 = { version = ">=306", markers = "sys_platform == 'win32'" }
 
+# Agent 编排 (LangGraph 1.x LTS)
+# 放在核心组而非可选组: agent/core.py 本身就是图实现, CLI 与 GUI 都依赖它。
+# 核心组也让 CI/Docker 的 `--without tray,gui,kb` 零改动即覆盖图代码。
+langgraph = "^1.2"
+# 桌面端持久化: 单文件 SQLite（不用 Postgres —— 桌面程序不该依赖数据库服务）
+langgraph-checkpoint-sqlite = "^3.1"
+# 直接 import messages / BaseChatModel / BaseTool, 显式声明以免靠传递依赖
+langchain-core = ">=1.6,<2.0"
+# 原为 kb 组的传递依赖; langgraph 需要 pydantic v2, 显式声明
+# （scripts/embed_server.py 也直接 import pydantic）
+pydantic = ">=2.13,<3"
+
 # 日志
 colorlog = ">=6.7.0"
 

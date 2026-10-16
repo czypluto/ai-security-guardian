@@ -45,12 +45,20 @@ def _is_admin() -> bool:
 class ToolDef:
     """Tool definition with JSON Schema for function calling."""
     def __init__(self, name: str, description: str, parameters: dict,
-                 handler: Callable, require_admin: bool = False):
+                 handler: Callable, require_admin: bool = False,
+                 requires_approval: bool = False, risk_level: str = "safe"):
         self.name = name
         self.description = description
         self.parameters = parameters
         self.handler = handler
         self.require_admin = require_admin
+        # 审批闸门基线：为 True 时, agent/graph.py 的 approval 节点会在执行前用
+        # interrupt() 暂停等人工批准。
+        # 刻意**不**写进 to_openai_schema() —— 那是给模型看的，既不该暴露内部策略，
+        # 严格 provider 也会因未知字段报错。
+        self.requires_approval = requires_approval
+        # safe | caution | sensitive | dangerous —— 仅用于展示/日志/审批文案
+        self.risk_level = risk_level
 
     def to_openai_schema(self) -> dict:
         return {
@@ -77,6 +85,17 @@ class ToolDef:
             return str(result)
         except Exception as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+# 需人工审批的工具名清单。
+# 仅作文档/测试用的**派生**视图 —— 真正的判据是各 ToolDef 上的 requires_approval 标志
+# （见 create_tool_registry 里三个工具的注册处）。tests/agent/test_graph_tools.py
+# 会断言两者一致，防止这份清单与代码漂移。
+APPROVAL_REQUIRED_TOOLS = frozenset({
+    "run_command",
+    "install_skill",
+    "recommend_mcp_server",
+})
 
 
 # ---- Tool Registry ----
@@ -315,6 +334,9 @@ def create_tool_registry() -> ToolRegistry:
         },
         handler=_run_command,
         require_admin=False,
+        # 能起进程 —— 执行前必须人工批准（见 agent/graph.py 的 approval 节点）
+        requires_approval=True,
+        risk_level="caution",
     ))
 
     registry.register(ToolDef(
@@ -534,6 +556,9 @@ def create_tool_registry() -> ToolRegistry:
             },
         },
         handler=install_skill,
+        # 会往 skills/ 写文件 —— 执行前必须人工批准
+        requires_approval=True,
+        risk_level="sensitive",
     ))
 
     registry.register(ToolDef(
@@ -557,6 +582,9 @@ def create_tool_registry() -> ToolRegistry:
             },
         },
         handler=recommend_mcp_server,
+        # 输出的是会被用户粘贴进 config.yaml 的启动命令 —— 执行前必须人工批准
+        requires_approval=True,
+        risk_level="caution",
     ))
 
     registry.register(ToolDef(

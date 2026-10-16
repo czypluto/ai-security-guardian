@@ -33,6 +33,27 @@ class AgentConfig:
     # Agent loop
     max_iterations: int = 10
     stream_output: bool = True
+    # 送给 LLM 的历史消息窗口（对齐 GUI 原有的 [-20:] 裁剪）
+    history_limit: int = 20
+
+    # 危险工具的人工审批闸门（实现见 agent/graph.py 的 approval 节点）
+    #
+    # 判据有**两个来源**，任一命中即需审批：
+    #   1. ToolDef.requires_approval —— 工具自带的基线（run_command / install_skill /
+    #      recommend_mcp_server 三个已标注），这是主要来源；
+    #   2. 下面的 approval_required_tools —— 配置层的**追加**名单。
+    # 默认留空，避免与工具自带标注重复维护成两处真相。
+    approval_mode: str = "interactive"   # interactive | auto_approve | auto_reject
+    approval_required_tools: list[str] = field(default_factory=list)
+    approval_timeout_seconds: int = 300  # 0 = 无限等待
+
+    # 图状态持久化（LangGraph checkpointer）
+    checkpoint_backend: str = "sqlite"   # sqlite | memory
+    checkpoint_db_path: str = ""         # 空 = <项目根>/data/guardian_graph.sqlite
+
+    # KB 上下文检索的超时预算（秒）；0 = 不限。
+    # GUI 靠它防止嵌入服务冷启动（约 20s）拖慢首条回复，CLI 顺带获得同样能力。
+    kb_context_timeout: float = 4.0
 
     # System prompt
     system_prompt: str = ""
@@ -134,6 +155,12 @@ class AgentConfig:
         kb_vector_db = (kb_cfg.get("vector_db") if kb_cfg else None) or {"provider": "local"}
         kb_embedding = kb_cfg.get("embedding") or None if kb_cfg else None
 
+        # Agent 运行参数（可选段）。
+        # 与下面 KB 段同理：pc_agent/config.yaml 被 .gitignore 忽略、仓库里没有模板，
+        # 新克隆下来可能完全没有这个文件 —— 所以默认值必须落在**代码**里，
+        # 不能只依赖 config.yaml 里写。
+        agent_cfg = cfg.get("agent", {}) or {}
+
         return cls(
             providers=sorted(providers, key=lambda p: p.priority),
             mcp_servers=mcp,
@@ -144,6 +171,16 @@ class AgentConfig:
             knowledge_base_embedding_model=kb_embed_model,
             knowledge_base_vector_db=kb_vector_db,
             knowledge_base_embedding=kb_embedding,
+            # 以下此前**从未**从配置传入 —— yaml 里写了也不生效（配置哑变量）。
+            max_iterations=agent_cfg.get("max_iterations", 10),
+            history_limit=agent_cfg.get("history_limit", 20),
+            system_prompt=agent_cfg.get("system_prompt", "") or "",
+            approval_mode=agent_cfg.get("approval_mode", "interactive"),
+            approval_required_tools=list(agent_cfg.get("approval_required_tools") or []),
+            approval_timeout_seconds=agent_cfg.get("approval_timeout_seconds", 300),
+            checkpoint_backend=agent_cfg.get("checkpoint_backend", "sqlite"),
+            checkpoint_db_path=agent_cfg.get("checkpoint_db_path", "") or "",
+            kb_context_timeout=agent_cfg.get("kb_context_timeout", 4.0),
         )
 
 
