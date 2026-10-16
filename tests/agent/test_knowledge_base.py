@@ -43,7 +43,6 @@ def test_degraded_mode(tmp_path):
     stats = kb.get_stats()
     assert stats["vector_db"] == "none"
     assert "storage_dir" in stats
-    assert "chroma_dir" in stats  # 遗留别名
 
 
 def test_store_present_but_embedding_unavailable_skips_vector_path(tmp_path):

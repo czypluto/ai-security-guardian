@@ -309,7 +309,8 @@ Examples:
     # Create agent
     tools = create_tool_registry()
 
-    # Initialize knowledge base (Milvus 主 / Qdrant 后备；vLLM 嵌入；不可达自动降级)
+    # Initialize knowledge base (向量库默认进程内，可选 Milvus/Qdrant；
+    #                           嵌入为本地 transformers 服务；不可达自动降级为关键词检索)
     kb = None
     if config.knowledge_base_enabled:
         try:

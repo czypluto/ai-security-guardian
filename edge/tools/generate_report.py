@@ -361,7 +361,7 @@ body('本实训项目设计并实现了一个集 ESP32 嵌入式硬件、Windows
      '进程行为、防火墙状态和系统资源，并通过 JSON over Serial 协议将安全状态推送至'
      'ESP32 + OLED 显示屏的物理终端设备。同时，系统集成了多模型 LLM 客户端'
      '（支持 DeepSeek、智谱 AI、硅基流动），由二次元角色"安小盾"以表情和台词形式'
-     '进行交互反馈。项目还实现了基于 Milvus/Qdrant 的向量知识库、MCP 协议支持、Skills '
+     '进行交互反馈。项目还实现了内置向量检索（向量 + 中文 BM25，RRF 融合）的知识库、MCP 协议支持、Skills '
      '技能系统和多层安全沙箱等高级功能。测试结果表明，系统能够准确检测常见网络安全威胁，'
      '实时性良好，达到了设计目标。')
 
@@ -383,7 +383,8 @@ body('This training project designs and implements an intelligent network securi
      'netsh, and PowerShell interfaces, and pushes security status to an ESP32+OLED '
      'physical terminal through JSON-over-Serial protocol. It features a multi-model '
      'LLM client (DeepSeek/Zhipu/SiliconFlow) with an anime character "An Xiaodun" '
-     'for interactive feedback. Advanced features include Milvus/Qdrant vector knowledge base, '
+     'for interactive feedback. Advanced features include a built-in vector index fused with '
+     'Chinese BM25 retrieval, '
      'MCP protocol support, a Skills system, and multi-layer security sandbox. '
      'Test results demonstrate accurate threat detection and real-time responsiveness.',
      indent=True)
@@ -601,9 +602,10 @@ body('MCP（Model Context Protocol）是由Anthropic发布的开放协议标准�
      '和MCP Server两种角色。作为Client，可通过JSON-RPC 2.0协议连接外部MCP服务器，'
      '自动发现并调用其工具。作为Server，可将自身的安全工具暴露给外部客户端（如Claude Code）使用。', indent=True)
 
-body('向量知识库基于Milvus（主）/ Qdrant（后备）构建，使用vLLM部署的Qwen3-Embedding-'
-     '1.7B模型（1024维）进行文本的向量化编码。当vLLM或向量库服务不可达时，'
-     '系统自动降级到纯Python的TF-IDF后备方案与Markdown关键词检索。知识库存储对话历史并'
+body('向量知识库默认使用**进程内**向量索引（纯 Python 暴力余弦检索，零第三方依赖、'
+     '无需另起服务），也可配置为 Milvus / Qdrant 作为后端。嵌入由本地 transformers 直载的 '
+     'WeMM-Embedding-2B 模型（1024 维）提供，对外暴露 OpenAI 兼容的 /v1/embeddings。'
+     '嵌入服务不可达时，系统自动降级为中文 BM25 关键词检索。知识库存储对话历史并'
      '支持语义检索，在每次对话前将相关知识注入系统提示词，实现检索增强生成（RAG）。', indent=True)
 
 doc.add_page_break()
@@ -696,7 +698,7 @@ modules = [
     ('AI智能模块', 'LLM多模型客户端、ReAct Agent引擎、安全分析、威胁解释、角色对话'),
     ('设备通信模块', 'Serial/WiFi双模连接、自动COM口检测、心跳保活、断连恢复'),
     ('角色系统模块', '8种表情映射、12类60+句台词库、LLM动态台词、自定义角色导入'),
-    ('知识库模块', 'Milvus/Qdrant向量存储、vLLM嵌入、语义检索、对话保存'),
+    ('知识库模块', '内置向量检索 + 中文BM25关键词路（RRF融合）、本地嵌入、对话保存'),
     ('扩展能力模块', 'MCP Client/Server、Skills技能热加载、Web搜索、威胁情报查询'),
     ('用户界面模块', 'PyQt5桌面GUI、AI对话窗口、CLI Agent、系统托盘'),
 ]
@@ -717,14 +719,16 @@ figure_caption('图4-2  系统主流业务流程图')
 
 heading2('4.4  数据库设计')
 
-body('本系统的数据存储主要包括两个方面：一是通过Milvus/Qdrant向量数据库存储对话历史和知识片段，'
-     '二是通过Markdown文件存储知识库对话记录。由于系统以实时监控为主，'
+body('本系统的数据存储主要包括两个方面：一是通过向量索引存储对话历史和知识片段的嵌入，'
+     '默认落在进程内的索引文件中（可切换 Milvus/Qdrant），'
+     '二是通过Markdown文件存储知识库对话记录（Markdown 是事实源，索引可由它重建）。由于系统以实时监控为主，'
      '不涉及复杂的业务数据关系，因此不设计传统的关系型数据库ER模型。', indent=True)
 
 body('向量库中存储的向量数据结构包括：对话ID（自动生成UUID）、对话内容（文本）、'
      '向量嵌入（1024维浮点数组）、元数据（时间戳、对话角色、主题标签）。'
-     '知识库目录结构为：knowledge_base/conversations/（Markdown对话文件）+ '
-     'knowledge_base/vector_meta.json（向量库元信息），向量本体存于 Milvus/Qdrant 服务端。', indent=True)
+     '知识库目录结构为：knowledge_base/conversations/（Markdown对话文件，事实源）+ '
+     'knowledge_base/.vector_index.json（进程内向量索引，可由 Markdown 重建；'
+     '切换 Milvus/Qdrant 时向量本体才存于服务端）。', indent=True)
 
 doc.add_page_break()
 
@@ -989,7 +993,8 @@ body('（3）安全机制（沙箱命令白名单、设备断连恢复、LLM故�
      '在异常场景下表现正确。', indent=True)
 
 body('（4）已知限制：安全事件日志读取和进程终止操作需要管理员权限；'
-     'LLM分析和搜索功能需要互联网连接；vLLM嵌入与向量库服务需提前启动（见scripts/）。', indent=True)
+     'LLM分析和搜索功能需要互联网连接；本地嵌入服务首次使用时按需拉起（需加载模型，约20s），'
+     '未就绪时检索自动降级为关键词路；向量库默认进程内，无需额外启动。', indent=True)
 
 doc.add_page_break()
 
@@ -1005,7 +1010,7 @@ body('项目的主要成果包括：（1）实现了实时Windows安全监控引
      '支持多级安全等级评估和降级策略；（2）构建了基于ReAct范式的AI Agent，集成25+安全工具'
      '和MCP协议，具备强大的可扩展性；（3）开发了ESP32 OLED双屏固件，以极低成本（~33元）'
      '实现了物理安全终端；（4）设计了二次元角色"安小盾"的表情台词系统，'
-     '通过LLM驱动实现智能交互；（5）实现了向量知识库（Milvus/Qdrant+vLLM嵌入）、'
+     '通过LLM驱动实现智能交互；（5）实现了零依赖的内置向量检索（与中文BM25做RRF融合）、'
      'Skills技能系统和多层安全沙箱等高级特性。', indent=True)
 
 body('在项目开发过程中，遇到并解决了多个关键技术问题：'
@@ -1089,7 +1094,7 @@ body('首先感谢计算机科学与技术学院的各位老师在小学期实�
      '为我提供了宝贵的实践机会和项目展示平台。')
 
 body('感谢开源社区的贡献者们。本项目大量使用了开源技术，包括但不限于psutil、'
-     'PyQt5、Flask、Milvus/Qdrant、Arduino、Adafruit SSD1306等。'
+     'PyQt5、transformers、Arduino、Adafruit SSD1306等。'
      '开源精神让知识得以共享，让技术得以普惠。')
 
 body('感谢AI开源社区的技能创作者，特别是academic-research-skills和codex-claude-academic-skills'
@@ -1113,19 +1118,17 @@ body('附录2  主要依赖清单', indent=True)
 
 deps = [
     ('Python 3.10+', '主控语言'),
-    ('psutil 7.2.2', '系统进程/网络监控'),
-    ('PyQt5 5.15.11', '桌面GUI框架'),
-    ('PyQt5 5.15.11', '桌面GUI框架'),
-    ('pyserial 3.5', 'ESP32串口通信'),
-    ('pywin32 305', 'Windows EventLog API'),
-    ('requests 2.34.2', 'LLM HTTP客户端'),
-    ('PyYAML 6.0.3', '配置文件解析'),
-    ('pymilvus', '向量数据库 (Milvus 主)'),
-    ('qdrant-client', '向量数据库 (Qdrant 后备)'),
-    ('vllm', '嵌入服务 (Qwen3-Embedding, WSL2)'),
-    ('pystray 0.19.5', '系统托盘'),
-    ('pytest 8.4.2', '单元测试框架'),
-    ('python-docx 1.2.0', 'DOCX文档生成'),
+    ('psutil', '系统进程/网络监控'),
+    ('PyQt5', '桌面GUI框架'),
+    ('pyserial', 'ESP32串口通信'),
+    ('pywin32', 'Windows EventLog API'),
+    ('requests', 'LLM HTTP客户端'),
+    ('PyYAML', '配置文件解析'),
+    ('transformers', '本地嵌入服务 (WeMM-Embedding-2B, scripts/embed_server.py)'),
+    ('pystray', '系统托盘'),
+    ('pytest', '单元测试框架'),
+    ('python-docx', 'DOCX文档生成'),
+    ('pymilvus / qdrant-client', '向量数据库（可选后端；默认用进程内实现，无需安装）'),
 ]
 for name, desc in deps:
     body(f'{name} — {desc}', indent=True)
@@ -1154,6 +1157,9 @@ add_table(
 )
 
 # ---- 保存 ----
-doc.save(OUTPUT)
-print(f"\n[DONE] Report saved: {OUTPUT}")
+# 必须加 __main__ 守卫：这个脚本在**模块级**构建文档并写文件，
+# 没有守卫的话任何人 `import` 一下（哪怕是误操作）就会往桌面吐一个 DOCX。
+if __name__ == "__main__":
+    doc.save(OUTPUT)
+    print(f"\n[DONE] Report saved: {OUTPUT}")
 

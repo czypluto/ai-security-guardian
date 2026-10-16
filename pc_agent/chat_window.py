@@ -177,7 +177,7 @@ class LLMWorker(QThread):
     def _build_kb_context(self):
         """在 worker 线程构建知识库上下文（避免阻塞 GUI 线程）。
 
-        带时间预算：Ollama 冷启动加载嵌入模型可能耗时 20s+（urlopen 超时 20s），
+        带时间预算：嵌入服务冷启动要加载模型（实测约 20s），
         绝不能因此拖慢首条回复。4s 内构建不出来就放弃 KB 上下文，直接走 LLM。
         """
         if not self.kb or not self.user_message:
@@ -604,8 +604,8 @@ class ChatWindow(QDialog):
         self._tool_schemas = None
 
         # Knowledge base — 后台线程加载。
-        # 向量库 Milvus/Qdrant 与嵌入 vLLM 均为网络客户端，线程安全；
-        # 服务不可达时 get_knowledge_base() 自动降级（TF-IDF/关键词），绝不崩溃。
+        # 默认向量库在进程内、嵌入是本地 HTTP 服务，都可在后台线程安全调用；
+        # 服务不可达时 get_knowledge_base() 自动降级为关键词检索，绝不崩溃。
         self._kb = None
         self._kb_loaded = False
         if HAS_KB:
@@ -884,9 +884,9 @@ class ChatWindow(QDialog):
         threading.Thread(target=self._kb_load_worker, daemon=True).start()
 
     def _kb_load_worker(self):
-        """后台加载 KB：vLLM 嵌入探测 + Milvus/Qdrant 探活，均带短超时。
+        """后台加载 KB：嵌入服务探测 + 向量库探活，均带短超时。
 
-        服务不可达时 get_knowledge_base() 自动降级（TF-IDF / 关键词检索），
+        服务不可达时 get_knowledge_base() 自动降级（关键词检索），
         绝不让 GUI 卡住或崩溃。
         """
         try:

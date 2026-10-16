@@ -2,25 +2,28 @@
 Knowledge Base — 本地知识库 (RAG)
 
 功能:
-  - 对话保存为 Markdown 文件
-  - 向量化存储 (Milvus 主 / Qdrant 后备，客户端-服务端)
+  - 对话保存为 Markdown 文件（**事实源**，索引丢了也能重建）
+  - 向量化存储（默认**进程内**，零依赖；可配置 Milvus / Qdrant）
   - 语义检索历史对话
   - 为 LLM 构建上下文增强提示
 
 嵌入:
   - 本地 WeMM-Embedding-2B，由 scripts/embed_server.py 以 transformers 直载（int8 GPU），
     暴露 OpenAI 兼容的 /v1/embeddings；按需启停见 agent/embed_service.py
-  - 嵌入服务不可用时降级为纯 Python TF-IDF 关键词检索
+  - 嵌入服务不可用时**只有关键词路**（没有向量语义召回）。
+    曾经写过一个 TF-IDF 后备类，但它既没实现 `__call__` 也从没被 fit 过、
+    且该分支下向量路根本不进 —— 运行时不可达，已删除。见 _create_embedding_fn。
 
 检索:
-  - 向量路（Milvus 主 / Qdrant 备）+ 中文 BM25 关键词路，两路 RRF 融合（见 agent/bm25.py）
+  - 向量路（默认进程内；可切 Milvus / Qdrant）+ 中文 BM25 关键词路，
+    两路 RRF 融合（见 agent/bm25.py）
 
 架构:
   knowledge_base/
   ├── conversations/     # Markdown 对话文件 (始终保留)
   └── vector_meta.json   # 向量库元信息 (集合名/维度/provider)
 
-线程安全: 客户端-服务端 (vLLM/Milvus/Qdrant) 均为网络客户端，可在后台线程安全调用。
+线程安全: 嵌入服务与向量库均为网络客户端（或进程内），可后台线程安全调用。
 ChromaDB 因 Rust 绑定在后台线程段错误而弃用。
 """
 from __future__ import annotations
@@ -75,19 +78,6 @@ class HttpEmbeddingFunction:
         data = resp.json()
         items = sorted(data.get("data", []), key=lambda x: x.get("index", 0))
         return [item["embedding"] for item in items]
-
-    # 与旧 OllamaEmbeddingFunction 相同的兼容接口
-    def embed_query(self, input):
-        return self(input)
-
-    def embed_documents(self, input):
-        return self(input)
-
-    def name(self) -> str:
-        return f"local-{self.model}"
-
-    def get_config(self):
-        return {"url": self.url, "model": self.model, "timeout": self.timeout}
 
 
 # Embedding 工厂
@@ -740,7 +730,6 @@ class KnowledgeBase:
             "vector_db": self._vector_db_name or "none",
             "storage_dir": str(self.conversations_dir),
             "conversations_dir": str(self.conversations_dir),
-            "chroma_dir": str(self.conversations_dir),  # 遗留别名
         }
 
 
