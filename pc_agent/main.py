@@ -20,28 +20,53 @@ import time
 from pathlib import Path
 
 import yaml
-from ai_status import AIStatusTracker
-from character_manager import CharacterManager
-from device_bridge import DeviceBridge
-from firewall_checker import FirewallChecker
-from llm_client import MultiLLMClient, Provider
-from network_monitor import NetworkMonitor
-from process_monitor import ProcessMonitor
-from security_monitor import SecurityMonitor
+
+# 同目录模块要同时支持两种运行方式：
+#   * 当脚本:  python pc_agent/main.py          -> __package__ 为空，走扁平导入
+#   * 当包:    poetry 的 guardian-pc 入口         -> __package__ == "pc_agent"，走相对导入
+#
+# 以前只有扁平导入，于是 `import pc_agent.main` 直接 ModuleNotFoundError:
+# No module named 'ai_status'，pyproject 里声明的 guardian-pc 入口根本不可用。
+# 不能靠往 sys.path 里塞 pc_agent/ 来统一 —— 那样 `ai_status` 与
+# `pc_agent.ai_status` 会成为两个不同的模块对象，跨模块 isinstance 会莫名失败。
+if __package__:
+    from .ai_status import AIStatusTracker
+    from .character_manager import CharacterManager
+    from .device_bridge import DeviceBridge
+    from .firewall_checker import FirewallChecker
+    from .llm_client import MultiLLMClient, Provider
+    from .network_monitor import NetworkMonitor
+    from .process_monitor import ProcessMonitor
+    from .security_monitor import SecurityMonitor
+else:
+    from ai_status import AIStatusTracker
+    from character_manager import CharacterManager
+    from device_bridge import DeviceBridge
+    from firewall_checker import FirewallChecker
+    from llm_client import MultiLLMClient, Provider
+    from network_monitor import NetworkMonitor
+    from process_monitor import ProcessMonitor
+    from security_monitor import SecurityMonitor
 
 # agent/llm.py 集成
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from agent.config import AgentConfig
+from agent.config import AgentConfig  # noqa: E402
 
 # 可选模块
 try:
-    from system_tray import SystemTrayApp
+    if __package__:
+        from .system_tray import SystemTrayApp
+    else:
+        from system_tray import SystemTrayApp
     HAS_TRAY = True
 except ImportError:
     HAS_TRAY = False
 
 try:
-    from desktop_gui import HAS_PYQT5, run_gui
+    if __package__:
+        from .desktop_gui import HAS_PYQT5, run_gui
+    else:
+        from desktop_gui import HAS_PYQT5, run_gui
     HAS_GUI = HAS_PYQT5
 except ImportError:
     HAS_GUI = False
@@ -174,10 +199,20 @@ class GuardianController:
 
         if agent_cfg and agent_cfg.providers:
             # 从 AgentConfig 直接注入已配置的 providers
-            from llm_client import LLMConfig as LLCfg
+            if __package__:
+                from .llm_client import LLMConfig as LLCfg
+            else:
+                from llm_client import LLMConfig as LLCfg
+
+            # 保留供应商身份，而不是一律标成 CUSTOM —— 界面上要显示用的哪家
+            by_name = {
+                "deepseek": Provider.DEEPSEEK,
+                "zhipu": Provider.ZHIPU,
+                "siliconflow": Provider.SILICONFLOW,
+            }
             for p in agent_cfg.providers:
                 client.add_provider(LLCfg(
-                    provider=Provider.CUSTOM,
+                    provider=by_name.get(p.name, Provider.CUSTOM),
                     api_key=p.api_key,
                     model=p.model,
                     base_url=p.base_url,
@@ -301,6 +336,13 @@ class GuardianController:
                     threats.append(f"⚠️ 检测到 {suspicious_procs} 个可疑进程: {', '.join(proc_names[:3])}")
                     messages.append(f"可疑进程: {', '.join(proc_names[:3])}")
 
+                # 高内存进程（ProcessMonitor.mem_threshold 此前是个哑配置）
+                high_mem = proc_result.get('high_mem_count', 0)
+                if high_mem > 0:
+                    mem_names = [d['name'] for d in
+                                 proc_result.get('high_mem_details', [])[:3]]
+                    messages.append(f"高内存进程 {high_mem} 个: {', '.join(mem_names)}")
+
                 # 3. 防火墙检查 (每30秒)
                 fw_result = self.firewall.check()
                 firewall_on = fw_result.get('firewall_on', True)
@@ -313,7 +355,29 @@ class GuardianController:
                     threats.append("🔴 Windows Defender 已关闭!")
                     messages.append("警告: 杀毒软件未运行")
 
-                # 4. 系统资源
+                # 4. Windows 安全事件日志 (EventLog)
+                #
+                # SecurityMonitor 此前一直在 __init__ 里被实例化却**从不调用** ——
+                # 这一段是它第一次真正进入主链路。读事件日志比其它检查重得多，
+                # 不能跟着 5s 的主循环跑，因此单独节流到 60s 一次。
+                now_ts = time.time()
+                if now_ts - getattr(self, '_last_sec_log_check', 0) >= 60:
+                    self._last_sec_log_check = now_ts
+                    try:
+                        sec = self.security.get_summary()
+                    except Exception as e:
+                        self.logger.debug(f"安全事件读取跳过: {e}")
+                        sec = {}
+                    failed_logins = sec.get('failed_logins', 0)
+                    new_users = sec.get('new_users', 0)
+                    if failed_logins > 0:
+                        messages.append(f"安全日志: 登录失败 {failed_logins} 次")
+                    if failed_logins > 5:
+                        threats.append(f"🚨 大量登录失败 ({failed_logins} 次)")
+                    if new_users > 0:
+                        threats.append(f"🚨 检测到新增用户账户 ({new_users} 个)")
+
+                # 5. 系统资源
                 import psutil
                 cpu_percent = psutil.cpu_percent(interval=1)
                 mem_percent = psutil.virtual_memory().percent

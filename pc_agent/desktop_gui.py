@@ -753,7 +753,10 @@ class DesktopGUI(QMainWindow):
     # AI 对话窗口
     def _open_chat_window(self):
         try:
-            from chat_window import ChatWindow
+            if __package__:
+                from .chat_window import ChatWindow
+            else:
+                from chat_window import ChatWindow
         except ImportError:
             self.logger.error("无法导入 AI 对话模块")
             return

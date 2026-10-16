@@ -144,6 +144,80 @@ class TestFromConfigFile:
             assert cfg.providers[0].model == "deepseek-chat"
             assert cfg.providers[0].api_key == "sk-integration-test"
 
+
+# ---- 多 provider ----
+
+def _write_yaml(tmp_path, llm_section):
+    import yaml
+
+    config = {"llm": llm_section, "mcp_servers": [], "skills": {"enabled": False}}
+    path = tmp_path / "multi.yaml"
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f)
+    return str(path)
+
+
+class TestMultipleProviders:
+    """三家供应商都要能装配上 —— 「多模型自动故障转移」的前提是有对象可转。
+
+    原先 from_config_file 只构造 DeepSeek，另外两家藏在一个几乎走不到的回退
+    分支里，于是文档宣称的故障转移实际从未发生过。
+    """
+
+    def test_all_three_configured(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real"},
+            "zhipu": {"enabled": True, "api_key": "zhipu-key-real"},
+            "siliconflow": {"enabled": True, "api_key": "sk-silicon-real"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert [p.name for p in cfg.providers] == ["deepseek", "zhipu", "siliconflow"]
+        # 真实端点与真实模型 id
+        assert cfg.providers[1].base_url == "https://open.bigmodel.cn/api/paas/v4"
+        assert all("v4-pro" not in p.model for p in cfg.providers)
+
+    def test_disabled_provider_is_skipped(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real"},
+            "zhipu": {"enabled": False, "api_key": "zhipu-key-real"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert [p.name for p in cfg.providers] == ["deepseek"]
+
+    def test_missing_key_is_skipped(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "${NOT_SET_ANYWHERE_XYZ}"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert cfg.providers == []
+
+    def test_placeholder_key_is_not_treated_as_configured(self, tmp_path):
+        """`sk-xxxxx` 这类占位符不能算「已配置」—— 否则会拿它去请求然后吃 401。"""
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-xxxxxxxxxxxxxxxx"},
+            "zhipu": {"enabled": True, "api_key": "your-api-key-here"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert cfg.providers == []
+
+    def test_priority_defaults_order_the_failover(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real"},
+            "zhipu": {"enabled": True, "api_key": "zhipu-key-real"},
+            "siliconflow": {"enabled": True, "api_key": "sk-silicon-real"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert [p.priority for p in cfg.providers] == [0, 1, 2]
+
+    def test_explicit_model_override(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real",
+                         "model": "deepseek-reasoner"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert cfg.providers[0].model == "deepseek-reasoner"
+        assert cfg.providers[0].base_url == "https://api.deepseek.com/v1"
+
     def test_disabled_provider_skipped(self, tmp_path):
         """Providers with enabled=false should be skipped."""
         import yaml

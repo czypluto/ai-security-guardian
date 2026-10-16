@@ -24,6 +24,21 @@ class LLMProvider:
         return f"{self.base_url.rstrip('/')}/chat/completions"
 
 
+def _is_placeholder_key(api_key: str) -> bool:
+    """识别配置模板里没被替换掉的占位值。
+
+    以前用的是形状检查 `api_key.startswith("sk-")` —— 而占位符 `sk-xxxxx`
+    恰好也满足它，于是「没配」被当成「配好了」，接着线上拿它去请求、拿 401。
+    """
+    key = (api_key or "").strip().lower()
+    if not key:
+        return True
+    if key.count("x") >= 3 and set(key) <= set("sk-xyz0123456789"):
+        return True
+    return any(marker in key for marker in
+               ("your-api-key", "your_api_key", "changeme", "<your"))
+
+
 @dataclass
 class AgentConfig:
     """Complete agent runtime configuration."""
@@ -114,18 +129,47 @@ class AgentConfig:
         providers = []
         llm_cfg = cfg.get("llm", {})
 
-        # DeepSeek — primary brain
-        ds = llm_cfg.get("deepseek", {})
-        ds_key = cls._resolve_env(ds.get("api_key", ""))
-        if ds.get("enabled") and ds_key.startswith("sk-"):
+        # LLM providers —— 三家都是**可选**的，配了哪家就启用哪家。
+        # priority 决定 LLMRouter 的尝试顺序（数字小的先试）。
+        #
+        # 原先这里只构造 DeepSeek，另外两家藏在 pc_agent/main.py 的一个手动回退
+        # 分支里、且只有在 AgentConfig 解析不出任何 provider 时才会走到 ——
+        # 于是 README 宣称的「多模型自动故障转移」实际没有对象可转。
+        # 表驱动之后，加一家供应商只需要往这里加一行。
+        presets = {
+            "deepseek": {
+                "base_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "priority": 0,
+            },
+            "zhipu": {
+                "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "model": "glm-4-flash",
+                "priority": 1,
+            },
+            "siliconflow": {
+                "base_url": "https://api.siliconflow.cn/v1",
+                "model": "deepseek-ai/DeepSeek-V3",
+                "priority": 2,
+            },
+        }
+
+        for name, preset in presets.items():
+            pcfg = llm_cfg.get(name) or {}
+            if not pcfg.get("enabled"):
+                continue
+            api_key = cls._resolve_env(pcfg.get("api_key", ""))
+            if not api_key or _is_placeholder_key(api_key):
+                continue
             providers.append(LLMProvider(
-                name="deepseek",
-                api_key=ds_key,
-                base_url="https://api.deepseek.com/v1",
-                model=ds.get("model", "deepseek-chat"),
-                max_tokens=1024,
-                temperature=0.7,
-                priority=0,
+                name=name,
+                api_key=api_key,
+                base_url=pcfg.get("base_url") or preset["base_url"],
+                model=pcfg.get("model") or preset["model"],
+                max_tokens=int(pcfg.get("max_tokens", 1024)),
+                temperature=float(pcfg.get("temperature", 0.7)),
+                timeout=int(pcfg.get("timeout", 30)),
+                priority=int(pcfg.get("priority", preset["priority"])),
             ))
 
         # MCP servers

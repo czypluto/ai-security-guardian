@@ -47,6 +47,8 @@ class ProcessMonitor:
             'suspicious_details': [],
             'high_cpu_count': 0,
             'high_cpu_details': [],
+            'high_mem_count': 0,
+            'high_mem_details': [],
             'cpu_percent': psutil.cpu_percent(interval=0.5),
         }
 
@@ -79,6 +81,19 @@ class ProcessMonitor:
                             'pid': pid,
                             'name': info['name'],
                             'cpu': f"{cpu:.1f}%",
+                        })
+
+                    # 3. 检查异常内存占用
+                    # memory_percent 一直在 process_iter 的字段里被取出来，却从来没
+                    # 参与过判断 —— mem_threshold 因此是个哑配置（README 的
+                    # 「CPU/内存异常告警」只有前半句是真的）。
+                    mem = info['memory_percent'] or 0
+                    if mem > self.mem_threshold:
+                        result['high_mem_count'] += 1
+                        result['high_mem_details'].append({
+                            'pid': pid,
+                            'name': info['name'],
+                            'mem': f"{mem:.1f}%",
                         })
 
                 except (psutil.NoSuchProcess, psutil.AccessDenied):

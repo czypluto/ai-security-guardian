@@ -11,7 +11,8 @@ import time
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from llm_client import MultiLLMClient
+    # 仅类型检查用；相对导入才在「作为包导入」时解析得到
+    from .llm_client import MultiLLMClient
 
 
 class CharacterManager:

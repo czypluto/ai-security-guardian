@@ -75,7 +75,9 @@ ALLOWED_COMMANDS = {
 }
 
 # Maximum serial data rate (bytes per second)
-MAX_SERIAL_RATE_BPS = 4096
+# 注：这里曾有一个 MAX_SERIAL_RATE_BPS = 4096，全项目零引用，已删除。
+# 真正的串口速率限制在 pc_agent/device_bridge.py 的 _max_cmds_per_sec（每秒条数，
+# 而不是每秒字节数）—— 那才是生效的那份。
 
 # Maximum consecutive invalid commands before lockdown
 MAX_INVALID_COMMANDS = 10
