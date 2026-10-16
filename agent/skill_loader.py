@@ -59,6 +59,7 @@ class SkillManager:
     def load_all(self) -> list[Skill]:
         """Scan all directories and load discovered skills."""
         self._skills.clear()
+        skipped: list[str] = []
         for skill_dir in self._skill_dirs:
             if not os.path.isdir(skill_dir):
                 continue
@@ -69,8 +70,13 @@ class SkillManager:
                         skill = self._parse_skill_file(full_path)
                         if skill:
                             self._skills[skill.name] = skill
+                        else:
+                            skipped.append(os.path.relpath(full_path, skill_dir))
         logger.info(f"Skills: loaded {len(self._skills)} from {len(self._skill_dirs)} dirs "
                     f"({list(self._skills.keys())})")
+        if skipped:
+            logger.info("Skills: 跳过 %d 个非技能 .md（无 triggers）: %s",
+                        len(skipped), skipped)
         return self.list_all()
 
     def _parse_skill_file(self, file_path: str) -> Optional[Skill]:
@@ -93,13 +99,29 @@ class SkillManager:
 
         name = frontmatter.get("name", os.path.splitext(os.path.basename(file_path))[0])
         description = frontmatter.get("description", body[:120].replace("\n", " "))
+
+        # triggers 允许两种写法：YAML 列表，或一行逗号分隔的字符串。
+        # 原实现把逗号字符串整体当成**一个**触发器（"白名单, whitelist, ..."），
+        # 那种写法实际永远匹配不上。
         triggers = frontmatter.get("triggers", [])
+        if isinstance(triggers, str):
+            triggers = [t.strip() for t in triggers.split(",") if t.strip()]
+        if not isinstance(triggers, list):
+            triggers = [triggers]
+
+        if not triggers:
+            # 没有触发器 = 永远不可能被激活。加载它只会污染「可用技能」列表、
+            # 白占系统提示词的位置，还会让匹配逻辑在宽泛词上误命中。
+            # os.walk 是递归的，所以技能包里的 references/*.md 资料文件、
+            # 以及只有 name/description 的 SKILL.md 都会走到这里。
+            logger.debug("跳过非技能 .md（无 triggers）: %s", file_path)
+            return None
 
         return Skill(
             name=name,
             description=description,
             content=body,
-            triggers=triggers if isinstance(triggers, list) else [triggers],
+            triggers=triggers,
             file_path=file_path,
         )
 

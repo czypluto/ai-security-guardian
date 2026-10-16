@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import ctypes
 import logging
-import os
 import subprocess
 import sys
 import time
@@ -81,11 +80,9 @@ DEFAULT_MAX_TIME_SEC = 30
 DEFAULT_MAX_MEMORY_MB = 64
 DEFAULT_MAX_OUTPUT_BYTES = 16384  # 16KB
 
-# Allowed write paths (everything else is read-only)
-ALLOWED_WRITE_PATHS = [
-    r"C:\Users\24522\AppData\Local\Temp",
-    os.environ.get("TEMP", r"C:\Windows\Temp"),
-]
+# 这里曾有一个 ALLOWED_WRITE_PATHS，声称「其余路径只读」的文件系统守卫。
+# 实测全项目零引用 —— 守卫根本不存在，只是让人以为有。而且它还写死了开发者的
+# 个人路径（C:\Users\<名字>\AppData\...）。已删除，README 里如实标注为未实现。
 
 # ---- Windows Job Object (via ctypes) ----
 

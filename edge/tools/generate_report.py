@@ -7,6 +7,14 @@
 模板: <学号>+<姓名>+小学期实训报告.docx
 """
 
+# 这是一个**脚本**而不是模块：整个文件都是顶层语句，import 它会在桌面直接写出
+# docx（并顺手建一个临时目录）。审计时就误触发过一次。显式挡住误导入。
+if __name__ != "__main__":
+    raise RuntimeError(
+        "generate_report.py 是脚本，不能当模块导入 —— 导入会立即在桌面写出 docx。"
+        "请用 `python generate_report.py` 运行。"
+    )
+
 import os
 import tempfile
 
