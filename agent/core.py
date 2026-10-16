@@ -1,11 +1,36 @@
-"""Agent Core — ReAct loop with MCP tools, skills, KB, and streaming output."""
+"""Agent Core —— 基于 LangGraph 状态图的 agent 编排。
+
+这里曾经是一个手写的 ``while`` ReAct 循环。循环现在搬进了 ``agent/graph.py``
+的状态图，``AgentCore`` 退化成「装配 + 翻译」的薄壳：
+
+  * **装配**：LLMRouter / ToolRegistry / MCP / Skills / KB -> 一张编译好的图
+  * **翻译**：把图产出的 custom 事件原样吐出；遇到 ``interrupt()`` 就交给
+    调用方去问人，然后用 ``Command(resume=...)`` 续跑
+
+对外契约（``run`` / ``run_stream`` / ``save_conversation`` / ``clear_conversation``
+/ ``summary``）与改造前**完全一致**，因此 ``agent_cli.py`` 的调用方式一行都不用改。
+
+顺带修掉的两个旧问题：
+  * 「本轮命中哪个技能」现在是**每轮 state**，不是常驻实例属性 —— 旧实现里
+    消费者提前跳出生成器或抛异常时 ``_active_skill`` 会永久残留，之后每轮都注入
+    同一个技能；这在结构上不可能再发生了。
+  * 对话历史由 checkpointer 按 ``thread_id`` 承载，而不是每轮重建
+    ``[system, user]`` —— LLM 现在真的能看到上文。
+"""
 from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import TYPE_CHECKING, Generator, Optional
 
-from .config import DEFAULT_SYSTEM_PROMPT, AgentConfig
+from langchain_core.messages import HumanMessage
+from langgraph.errors import GraphRecursionError
+from langgraph.types import Command
+
+from .config import AgentConfig
+from .graph import build_graph, build_system_prompt, extract_interrupts, recursion_limit_for
+from .graph_model import LLMUnavailableError, build_chat_model
 from .llm import LLMRouter
 from .mcp_client import MCPManager
 from .skill_loader import Skill, SkillManager
@@ -18,17 +43,19 @@ logger = logging.getLogger("Guardian.Agent")
 
 
 class AgentCore:
-    """ReAct agent: Think -> Act -> Observe -> Repeat.
+    """ReAct agent: Think -> Act -> Observe -> Repeat（由状态图驱动）。
 
-    Architecture:
-      LLM Router (DeepSeek-v4-pro)
-        |
-      Tool Registry (built-in + MCP-discovered + skills)
-        |
-      +-- Built-in tools (scan_network, check_firewall, ...)
-      +-- MCP Client (external MCP servers, JSON-RPC 2.0)
-      +-- Skill Manager (local .md files, prompt injection)
-      +-- Knowledge Base (vector search for past conversations)
+    装配关系::
+
+        LLM Router（多 provider 故障转移）
+          |
+        Tool Registry（内置 + MCP 发现 + 技能）
+          |
+        agent/graph.py 的状态图
+          +-- prepare   技能匹配 + KB 检索
+          +-- agent     组装提示词 -> 调模型
+          +-- approval  interrupt() 等人工批准（仅敏感工具）
+          +-- tools     执行（永不重放，副作用恰好一次）
     """
 
     def __init__(self, config: AgentConfig, tool_registry: ToolRegistry = None,
@@ -51,10 +78,22 @@ class AgentCore:
         # Skills: auto-load from skills/ directories
         self.skills = SkillManager(config.skill_dirs)
         self.skills.load_all()
+        # 兼容保留的旧属性名（agent_cli 的 banner 会读）；真正的「本轮技能」
+        # 在图的 state 里，见 graph.GuardianState.active_skill
         self._active_skill: Optional[Skill] = None
+        self._last_active_skill: Optional[str] = None
 
         # Conversation tracking for KB save
         self._conversation_messages: list[dict] = []
+
+        # 图与 thread：thread_id 决定 checkpoint 的归属，clear 时换一个新 thread
+        self._thread_id: str = ""
+        self._graph_config: dict = {}
+        self._model = build_chat_model(self.llm, config)
+        self._graph = build_graph(
+            config, self.tools, self._model, skills=self.skills, kb=self.kb,
+        )
+        self._new_thread()
 
     # ---- MCP & Skills integration ----
 
@@ -85,18 +124,29 @@ class AgentCore:
             return {"result": result_json}
 
     def _build_system_prompt(self, kb_context: str = "") -> str:
-        """Build system prompt with active skill, tool list, and KB context."""
-        prompt = self.config.system_prompt or DEFAULT_SYSTEM_PROMPT
+        """兼容保留 —— 实际拼装在 graph 的 agent 节点里（同一份实现）。
 
-        # Inject knowledge base context
-        if kb_context:
-            prompt += "\n\n" + kb_context
+        工具描述由 `bind_tools` 注入，所以这里能看到的工具名来自 config 的
+        默认系统提示词。
+        """
+        return build_system_prompt(
+            self.config, self.skills,
+            {"kb_context": kb_context, "active_skill": None},
+        )
 
-        # Inject matched skill
-        skill_prompt = self.skills.build_skills_prompt(self._active_skill)
-        prompt += "\n\n" + skill_prompt
+    # ---- 图 / thread ----
 
-        return prompt
+    def _new_thread(self) -> str:
+        """换一个 thread_id（= 丢掉上下文，开一段新对话）。
+
+        旧 thread 的 checkpoint 自然成为孤儿；SQLite 里留着不影响新对话。
+        """
+        self._thread_id = f"guardian-{uuid.uuid4().hex}"
+        self._graph_config = {
+            "configurable": {"thread_id": self._thread_id},
+            "recursion_limit": recursion_limit_for(self.config),
+        }
+        return self._thread_id
 
     # ---- Public API ----
 
@@ -111,87 +161,85 @@ class AgentCore:
         return "".join(result_parts)
 
     def run_stream(self, user_input: str) -> Generator[dict, None, None]:
-        """Run agent with streaming output. Yields events."""
-        matched = self.skills.match_triggers(user_input)
-        if matched and not self._active_skill:
-            self._active_skill = matched
+        """跑一轮，产出 `{type: text|tool_start|tool_result|error}` 事件。
 
+        事件格式与改造前完全一致，所以 `agent_cli.display_stream` 无需改动。
+
+        中断控制流：`graph.stream` 遇到 `interrupt()` 时本次迭代就结束了，
+        于是在这里问用户，再用 `Command(resume=...)` **新开一次** stream。
+        恢复不是「继续同一个生成器」，而是「用新输入再跑一次」。
+        """
         self._conversation_messages.append({"role": "user", "content": user_input})
 
-        kb_context = ""
-        if self._kb_enabled:
-            try:
-                kb_context = self.kb.build_context(user_input, top_k=self._kb_top_k)
-                if kb_context:
-                    logger.debug(f"KB: 检索到相关知识 ({len(kb_context)} 字符)")
-            except Exception as e:
-                logger.debug(f"KB 检索跳过: {e}")
+        payload = {
+            "messages": [HumanMessage(content=user_input)],
+            "user_input": user_input,
+        }
 
-        system_prompt = self._build_system_prompt(kb_context)
-        tool_schemas = self.tools.get_schemas()
+        try:
+            while True:
+                interrupts = []
+                for part in self._graph.stream(
+                    payload, self._graph_config,
+                    stream_mode=["updates", "custom"], version="v2",
+                ):
+                    if part["type"] == "custom":
+                        # 节点已按旧格式产出事件，直通即可
+                        yield part["data"]
+                    elif part["type"] == "updates":
+                        interrupts.extend(extract_interrupts(part["data"]))
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_input},
-        ]
+                if not interrupts:
+                    break
 
-        iterations = 0
-        final_text = ""
+                decisions = [self._ask_approval(item.value) for item in interrupts]
+                # 通常一次只有一个（图会在第一个未恢复的中断处停下）
+                payload = Command(resume=decisions[0] if len(decisions) == 1 else decisions)
 
-        while iterations < self.config.max_iterations:
-            iterations += 1
-
-            response = self.llm.chat(
-                messages=messages,
-                tools=tool_schemas if tool_schemas else None,
-                max_tokens=1024,
-            )
-
-            if not response.get("_ok"):
-                yield {"type": "error", "content": response.get("_error", "LLM call failed")}
-                self._active_skill = None
-                return
-
-            if self.llm.has_tool_calls(response):
-                tool_calls = self.llm.extract_tool_calls(response)
-                if not tool_calls:
-                    yield {"type": "error", "content": "Tool call parse failed"}
-                    self._active_skill = None
-                    return
-
-                messages.append(response["choices"][0]["message"])
-
-                for tc in tool_calls:
-                    func = tc.get("function", {})
-                    name = func.get("name", "unknown")
-                    try:
-                        args = json.loads(func.get("arguments", "{}"))
-                    except json.JSONDecodeError:
-                        args = {}
-
-                    yield {"type": "tool_start", "name": name, "arguments": args}
-
-                    result = self.tools.execute(name, args)
-                    yield {"type": "tool_result", "name": name, "result": result}
-
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.get("id", ""),
-                        "content": result,
-                    })
-                continue
-
-            reply = self.llm.extract_reply(response)
-            final_text = reply
-            yield {"type": "text", "content": reply}
-            self._active_skill = None
-
-            # Track assistant message for KB
-            self._conversation_messages.append({"role": "assistant", "content": reply})
+        except LLMUnavailableError as e:
+            yield {"type": "error", "content": str(e)}
+            return
+        except GraphRecursionError:
+            # 兜底：语义上限（agent 节点里的 iteration 判断）本该先触发
+            logger.warning("图触及 recursion_limit，按最大迭代截断")
+            yield {"type": "text", "content": "[Max iterations reached]"}
             return
 
-        if not final_text:
-            yield {"type": "text", "content": "[Max iterations reached]"}
+        self._record_result()
+
+    def _ask_approval(self, payload: dict) -> dict:
+        """向用户征求一次执行批准。GUI 侧会覆写这个方法。"""
+        tool = payload.get("tool", "?")
+        args = json.dumps(payload.get("arguments") or {}, ensure_ascii=False)
+        risk = payload.get("risk_level", "unknown")
+
+        print(f"\n  \033[33m[需确认]\033[0m {payload.get('message', f'是否允许执行 {tool}?')}"
+              f"  \033[90m(风险等级: {risk})\033[0m")
+        print(f"  \033[90m工具: {tool}\033[0m")
+        print(f"  \033[90m参数: {args[:200]}\033[0m")
+        try:
+            answer = input("  \033[33m允许执行? (y/N): \033[0m").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "n"   # 与 agent_cli._confirm_and_save 的既有兜底风格一致
+
+        approved = answer in ("y", "yes")
+        return {"approved": approved, "reason": "cli_user" if approved else "cli_denied"}
+
+    def _record_result(self):
+        """一轮结束后把结果回写：KB 落库用的消息 + banner 展示用的技能名。"""
+        try:
+            values = self._graph.get_state(self._graph_config).values or {}
+        except Exception as e:  # noqa: BLE001 - 只是记录，失败不该让整轮报错
+            logger.debug("读取图状态失败: %s", e)
+            return
+
+        final_text = values.get("final_text") or ""
+        if final_text:
+            self._conversation_messages.append(
+                {"role": "assistant", "content": final_text})
+
+        self._last_active_skill = values.get("active_skill")
+        # 不在轮次之间残留（旧实现正是这里漏了清理才导致技能粘滞）
         self._active_skill = None
 
     # ---- Knowledge Base ----
@@ -214,6 +262,9 @@ class AgentCore:
         """Clear conversation history (but keep KB)."""
         self._conversation_messages.clear()
         self._active_skill = None
+        self._last_active_skill = None
+        # 换 thread：旧 checkpoint 成为孤儿，历史不会再进新对话
+        self._new_thread()
 
     # ---- Info ----
 
@@ -237,10 +288,8 @@ class AgentCore:
             "mcp_tools": self.mcp.total_tools,
             "mcp_servers": self.mcp.connected_servers,
             "skills": len(self.skills.list_all()),
-            "skills_active": self._active_skill.name if self._active_skill else None,
+            "skills_active": self._last_active_skill,
             "kb_count": self.kb.count if self.kb else 0,
             "kb_convs": self.kb.conversation_count if self.kb else 0,
         }
         return result
-
-

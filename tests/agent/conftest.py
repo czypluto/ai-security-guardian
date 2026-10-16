@@ -37,6 +37,8 @@ def mock_config(mock_provider):
         mcp_servers=[],
         skill_dirs=[],
         knowledge_base_enabled=False,
+        # 测试一律用内存 checkpointer，否则每个用例都会往真实的 data/ 写 SQLite
+        checkpoint_backend="memory",
     )
 
 

@@ -247,7 +247,7 @@ def _retrieve_kb_context(kb, query: str, top_k: int, timeout: float) -> str:
     return box.get("ctx", "")
 
 
-def _build_system_prompt(config, skills, state) -> str:
+def build_system_prompt(config, skills, state) -> str:
     """拼系统提示词：基础提示 + KB 上下文 + 命中的技能。
 
     与改造前 ``AgentCore._build_system_prompt`` 语义一致，只是技能改从
@@ -310,7 +310,7 @@ def make_agent_node(config, registry, model, skills=None):
             _write({"type": "text", "content": text})
             return {"messages": [AIMessage(content=text)], "final_text": text}
 
-        system_prompt = _build_system_prompt(config, skills, state)
+        system_prompt = build_system_prompt(config, skills, state)
         history_limit = getattr(config, "history_limit", 20) or 0
         history = list(messages[-history_limit:]) if history_limit else list(messages)
 

@@ -24,8 +24,30 @@ sys.path.insert(0, str(Path(__file__).parent / "pc_agent"))
 
 from agent.config import AgentConfig
 from agent.core import AgentCore
+from agent.graph import resolve_approval_mode
 from agent.knowledge_base import get_knowledge_base
 from agent.tools import create_tool_registry
+
+
+def make_console_safe():
+    """让控制台输出永不因编码而崩。
+
+    中文 Windows 的控制台默认 GBK，本程序到处是 emoji（🛡️ 等），
+    一 print 就 UnicodeEncodeError —— 连 `--help` 都跑不完。
+    这里把 stdout/stderr 兜底成 UTF-8 且不可编码字符替换而非抛异常。
+    必须在 argparse 打印帮助**之前**调用，所以放在 main() 最前面。
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - 退一步：保留原编码，只保证不抛
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def setup_logging():
@@ -276,6 +298,8 @@ def run_chat_mode(agent: AgentCore):
 # ---- Main ----
 
 def main():
+    make_console_safe()
+
     parser = argparse.ArgumentParser(
         description="🛡️  AI Security Guardian — CLI Agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -292,6 +316,8 @@ Examples:
     parser.add_argument("--list-tools", "-l", action="store_true", help="List available tools")
     parser.add_argument("--config", default=None, help="Path to config.yaml")
     parser.add_argument("--model", "-m", default=None, help="Force specific LLM provider")
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="自动批准 run_command / install_skill 等敏感工具，不再逐次确认")
     args = parser.parse_args()
 
     setup_logging()
@@ -305,6 +331,14 @@ Examples:
         for p in config.providers:
             p.enabled = (p.name == args.model)
     config.system_prompt = config.system_prompt or ""  # Will use DEFAULT
+
+    # 审批模式归一化：显式 --yes 才自动放行；否则没有可交互 stdin（管道/重定向/
+    # 服务化）时降级为自动拒绝 —— fail-closed，见 agent/graph.resolve_approval_mode。
+    # GUI 侧是人在场（QMessageBox），不走这条路径。
+    if args.yes:
+        config.approval_mode = "auto_approve"
+    else:
+        config.approval_mode = resolve_approval_mode(config)
 
     # Create agent
     tools = create_tool_registry()
