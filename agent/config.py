@@ -120,13 +120,28 @@ class AgentConfig:
 
     @classmethod
     def from_config_file(cls, path: str) -> "AgentConfig":
-        """Load from pc_agent/config.yaml."""
+        """加载 pc_agent/config.yaml。
+
+        文件缺失、文件为空、YAML 内容不是字典 —— 三种情况都退回"全默认"，
+        不抛异常。理由：这个文件被 `.gitignore` 忽略，仓库里没有模板，
+        新克隆下来**本来就可能没有**；所有默认值都已写在代码里
+        （见下方 agent_cfg / kb_cfg 段）。
+
+        实测过原先的写法：文件不存在抛 `FileNotFoundError`、文件为空抛
+        `AttributeError: 'NoneType' object has no attribute 'get'` ——
+        两种都会让 CLI 崩在启动第一屏，而 README 却写着"缺文件也能跑"。
+        """
         from pathlib import Path
 
         import yaml
 
-        with open(path, "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            cfg = {}
+        if not isinstance(cfg, dict):
+            cfg = {}
 
         # Auto-load .env file
         cls._load_dotenv()

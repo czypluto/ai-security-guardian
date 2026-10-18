@@ -9,9 +9,11 @@
 于是故障转移、30s 离线冷却、`_provider`/`_latency_ms` 元数据全部原样保留 ——
 既没有复制那段逻辑，也没有绕过它。换来的只是让图认得这些消息。
 
-刻意**不**实现 `_stream`：`LLMRouter.chat_stream` 没有故障转移（只取 `_active_idx`
-那一个 provider）、不返回延迟元数据、tool_calls 也是凑齐 finish_reason 才吐，
-接进来等于给 GUI 换一条更差的通道。逐 token 流式留作后续单独议题。
+`_stream` 在后续一轮里补上了（GUI 需要逐 token 显示）。要注意这条路径**没有**故障转移 ——
+`LLMRouter.chat_stream` 只取 `_active_idx` 那一个 provider、不返回延迟元数据、
+tool_calls 也要凑齐 finish_reason 才吐。所以 `_stream` 里保留了兜底：
+**首字未出就失败**时退回 `_generate` 把故障转移拿回来；已经吐过字就不再回退，
+否则用户会看到重复文本。详见该方法的 docstring。
 """
 from __future__ import annotations
 
