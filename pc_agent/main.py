@@ -17,6 +17,7 @@ import signal
 import sys
 import threading
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import yaml
@@ -73,16 +74,36 @@ except ImportError:
 
 # 日志
 def setup_logging(config: dict):
-    """配置日志系统"""
+    """配置日志系统。
+
+    修掉的两个问题：
+      1. `logging.file` 原先是**相对路径**，落点取决于从哪个目录启动 ——
+         所以磁盘上会同时出现 `./guardian.log` 和 `pc_agent/guardian.log`。
+         现在锚定到项目根。
+      2. `max_size_mb` / `backup_count` 写在 config.yaml 里，但原实现用的是
+         不会轮转的 `FileHandler`，**这两个配置项完全没有被使用** ——
+         日志会无限增长。现在改用 `RotatingFileHandler`。
+
+    另外把日志级别的解析做稳：yaml 里写了非法值（比如 `level: verbose`）时
+    原实现会 `getattr(logging, 'verbose')` 抛 AttributeError，现在退回 INFO。
+    """
     try:
         import colorlog
         _has_colorlog = True
     except ImportError:
         _has_colorlog = False
 
-    log_config = config.get('logging', {})
-    level = getattr(logging, log_config.get('level', 'INFO'))
-    log_file = log_config.get('file', 'guardian.log')
+    log_config = config.get('logging', {}) or {}
+    level = getattr(logging, str(log_config.get('level', 'INFO')).upper(), logging.INFO)
+
+    # 绝对路径：`Path(root) / 绝对路径` 在 pathlib 里会保留右边，所以用户配绝对路径也不受影响
+    log_file = str(Path(__file__).parent.parent / log_config.get('file', 'guardian.log'))
+    max_bytes = int(log_config.get('max_size_mb', 10)) * 1024 * 1024
+    backup_count = int(log_config.get('backup_count', 3))
+    try:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+    except Exception:  # noqa: BLE001 - 建目录失败就让 FileHandler 去报错
+        pass
 
     # 控制台 handler (彩色)
     if _has_colorlog:
@@ -105,8 +126,9 @@ def setup_logging(config: dict):
             datefmt='%H:%M:%S',
         ))
 
-    # 文件 handler
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    # 文件 handler —— 轮转由 max_size_mb / backup_count 控制（原来这两个配置是哑的）
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
     file_handler.setFormatter(logging.Formatter(
         '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
     ))

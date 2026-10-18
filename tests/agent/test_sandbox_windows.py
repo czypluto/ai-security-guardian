@@ -92,3 +92,45 @@ class TestJobObjectOnWindows:
         """不止「建成了」，还要问内核确认进程真的在作业里。"""
         assert probe["assigned"] is True
         assert probe["in_job"] is True
+
+
+_TIMEOUT_PROBE = r"""
+import sys, time
+sys.path.insert(0, {root!r})
+from agent.sandbox import SandboxExecutor
+
+started = time.time()
+result = SandboxExecutor().execute("ping -n 30 127.0.0.1", timeout=2)
+elapsed = time.time() - started
+print("TIMEOUT_PROBE=" + str(round(elapsed, 1)) + "|" + str(bool(result.get("killed"))))
+"""
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="`ping -n` 是 Windows 语法")
+class TestTimeoutIsActuallyBounded:
+    """超时必须真的生效。
+
+    回归用例。修复前：`Popen.kill()` 只杀直接子进程（`shell=True` 时是 cmd.exe），
+    孙进程继续攥着 stdout 管道，后续 `communicate()` 等不到 EOF ——
+    `pc_agent/sandbox_audit.log` 里记过一条 `tasklist /v`：15s 超时，实际 **625 秒**。
+
+    修复方式：超时后先 `taskkill /F /T` 杀掉整棵树，再关 Job Object 兜底，
+    最后才去回收输出（回收失败就直接放弃，绝不再挂住）。
+    """
+
+    def test_long_command_is_killed_promptly(self):
+        result = subprocess.run(
+            [sys.executable, "-u", "-c", _TIMEOUT_PROBE.format(root=str(PROJECT_ROOT))],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=120, cwd=str(PROJECT_ROOT),
+        )
+        line = next((ln for ln in (result.stdout or "").splitlines()
+                     if ln.startswith("TIMEOUT_PROBE=")), None)
+        if line is None:
+            pytest.fail(f"探测脚本没有输出结果\nstdout={result.stdout}\nstderr={result.stderr}")
+
+        elapsed_str, killed_str = line[len("TIMEOUT_PROBE="):].split("|")
+        elapsed = float(elapsed_str)
+        assert killed_str == "True", "超时后应当标记 killed"
+        # 2s 超时 + 5s 回收上限 + 进程启动开销，给到 15s 已经很宽松
+        assert elapsed < 15, f"超时未被约束：{elapsed}s（曾经实测 625s）"

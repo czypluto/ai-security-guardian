@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -205,6 +206,36 @@ def create_job_object(name: str = None,
 
     logger.debug(f"Job object created: {job_name}")
     return ctypes.c_void_p(job)
+
+
+def _kill_process_tree(pid: int) -> None:
+    """杀掉整棵进程树（尽力而为，失败不影响后续兜底）。
+
+    为什么需要它：`Popen.kill()` 只终止**直接子进程**。`shell=True` 时直接子进程是
+    `cmd.exe`，真正干活的命令是它的子进程 —— 杀掉 cmd.exe 之后孙进程还活着，
+    而且可能继续攥着 stdout 管道，导致后续 `communicate()` 永远等不到 EOF。
+
+    实测证据：一条 `tasklist /v` 配 15s 超时，`pc_agent/sandbox_audit.log` 里记的是
+    `duration_ms: 625074.9` —— 快了 40 倍才回来。
+    """
+    if not pid:
+        return
+    try:
+        if sys.platform == "win32":
+            # /T = 连同子进程树，/F = 强制
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True, timeout=5,
+            )
+        else:
+            import signal as _signal
+
+            try:
+                os.killpg(os.getpgid(pid), _signal.SIGKILL)
+            except Exception:  # noqa: BLE001 - 不是进程组首领时退回单进程
+                os.kill(pid, _signal.SIGKILL)
+    except Exception as e:  # noqa: BLE001 - 尽力而为，调用方还有 Job Object 兜底
+        logger.debug("杀掉进程树失败 (pid=%s): %s", pid, e)
 
 
 def assign_process_to_job(job_handle: ctypes.c_void_p, process_handle: int):
@@ -404,12 +435,36 @@ class SandboxExecutor:
                 exit_code = proc.returncode
             except subprocess.TimeoutExpired:
                 killed = True
-                # Force kill — TerminateProcess, no escape
-                proc.kill()
+
+                # 必须杀**整棵进程树**。`Popen.kill()` 在 Windows 上只终止直接子进程
+                # （shell=True 时是 cmd.exe），孙进程会活下来；如果它攥着 stdout 管道，
+                # 下面那次 communicate() 就永远等不到 EOF。
+                # 实测证据：一条 `tasklist /v` 配 15s 超时，审计日志里记了 **625 秒**。
+                _kill_process_tree(pid)
+
+                # Job Object 兜底：关句柄会连带杀掉作业内所有进程（KILL_ON_JOB_CLOSE）
+                if job is not None:
+                    try:
+                        close_job_handle(job)
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug("关闭 Job Object 失败: %s", e)
+                    job = None   # 已经关了，finally 不再重复关
+
                 try:
-                    stdout_data, stderr_data = proc.communicate(timeout=3)
-                except Exception:
-                    pass
+                    stdout_data, stderr_data = proc.communicate(timeout=5)
+                except Exception as e:  # noqa: BLE001 - 兜底：超时路径不能再挂住
+                    logger.debug("超时后回收输出失败(%s)，放弃残留输出", e)
+                    stdout_data, stderr_data = "", ""
+                    for stream in (proc.stdout, proc.stderr):
+                        try:
+                            if stream:
+                                stream.close()
+                        except Exception:  # noqa: BLE001
+                            pass
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:  # noqa: BLE001
+                        pass
                 exit_code = -1
 
             duration_ms = (time.time() - t0) * 1000
