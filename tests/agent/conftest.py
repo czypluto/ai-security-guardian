@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-# ================================================================
-#  Config fixtures
-# ================================================================
+# ---- Config fixtures ----
 
 @pytest.fixture
 def mock_provider():
@@ -39,12 +37,12 @@ def mock_config(mock_provider):
         mcp_servers=[],
         skill_dirs=[],
         knowledge_base_enabled=False,
+        # 测试一律用内存 checkpointer，否则每个用例都会往真实的 data/ 写 SQLite
+        checkpoint_backend="memory",
     )
 
 
-# ================================================================
-#  Tool fixtures
-# ================================================================
+# ---- Tool fixtures ----
 
 @pytest.fixture
 def tool_registry():
@@ -67,9 +65,7 @@ def tool_registry():
     return registry
 
 
-# ================================================================
-#  Temp file fixtures
-# ================================================================
+# ---- Temp file fixtures ----
 
 @pytest.fixture
 def temp_yaml_config(tmp_path):
@@ -110,3 +106,4 @@ def temp_env_file(tmp_path):
     with open(env_path, "w", encoding="utf-8") as f:
         f.write("DEEPSEEK_API_KEY=sk-test-key-from-env-file\n")
     return str(env_path)
+

@@ -20,9 +20,13 @@ pillow>=10.0.0
 # 桌面 GUI (可选)
 PyQt5>=5.15.0
 
-# 知识库 (向量存储 + 本地 Embedding)
-chromadb>=0.4.0
-sentence-transformers>=2.2.0
+# 知识库：默认走**进程内**向量检索，不需要任何额外依赖（也不需要起容器）。
+# 只有想切回 Milvus / Qdrant 时才需要它们：
+#   pip install pymilvus qdrant-client
+# 原先这两行是必需依赖，与 pyproject 里把 kb 设为可选组、默认进程内的现状不符 ——
+# 照 README 装会装上一堆用不到的 SDK。
+# pymilvus>=2.4,<3.0      # 可选
+# qdrant-client>=1.9,<2.0 # 可选
 
 # 测试
 pytest>=7.0.0

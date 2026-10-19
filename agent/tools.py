@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -32,9 +33,7 @@ from .web_tools import web_fetch, web_search
 
 logger = logging.getLogger("Guardian.Tools")
 
-# ================================================================
-#  Tool Definition
-# ================================================================
+# ---- Tool Definition ----
 
 def _is_admin() -> bool:
     try:
@@ -47,12 +46,20 @@ def _is_admin() -> bool:
 class ToolDef:
     """Tool definition with JSON Schema for function calling."""
     def __init__(self, name: str, description: str, parameters: dict,
-                 handler: Callable, require_admin: bool = False):
+                 handler: Callable, require_admin: bool = False,
+                 requires_approval: bool = False, risk_level: str = "safe"):
         self.name = name
         self.description = description
         self.parameters = parameters
         self.handler = handler
         self.require_admin = require_admin
+        # 审批闸门基线：为 True 时, agent/graph.py 的 approval 节点会在执行前用
+        # interrupt() 暂停等人工批准。
+        # 刻意**不**写进 to_openai_schema() —— 那是给模型看的，既不该暴露内部策略，
+        # 严格 provider 也会因未知字段报错。
+        self.requires_approval = requires_approval
+        # safe | caution | sensitive | dangerous —— 仅用于展示/日志/审批文案
+        self.risk_level = risk_level
 
     def to_openai_schema(self) -> dict:
         return {
@@ -81,9 +88,19 @@ class ToolDef:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
 
 
-# ================================================================
-#  Tool Registry
-# ================================================================
+# 需人工审批的工具名清单。
+# 仅作文档/测试用的**派生**视图 —— 真正的判据是各 ToolDef 上的 requires_approval 标志
+# （见 create_tool_registry 里三个工具的注册处）。tests/agent/test_graph_tools.py
+# 会断言两者一致，防止这份清单与代码漂移。
+APPROVAL_REQUIRED_TOOLS = frozenset({
+    "run_command",
+    "install_skill",
+    "recommend_mcp_server",
+    "terminate_process",
+})
+
+
+# ---- Tool Registry ----
 
 class ToolRegistry:
     """Register and execute tools."""
@@ -119,9 +136,7 @@ class ToolRegistry:
         return json.dumps({"error": f"MCP tool '{name}' not connected"}, ensure_ascii=False)
 
 
-# ================================================================
-#  Built-in Tool Implementations
-# ================================================================
+# ---- Built-in Tool Implementations ----
 
 def _import_guardian_modules():
     """Lazy import guardian modules from pc_agent."""
@@ -162,6 +177,65 @@ def _scan_network() -> dict:
 
 def _scan_processes() -> dict:
     return _get_module("process").scan()
+
+
+# 绝不允许 Agent 终止的进程 —— 系统关键进程，杀掉会立刻导致蓝屏、强制重启、
+# 或网络/认证中断。这是**无论用户批不批准**都成立的硬保护。
+PROTECTED_PROCESS_NAMES = {
+    "system", "registry", "memory compression",
+    "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+    "services.exe", "lsass.exe", "svchost.exe", "fontdrvhost.exe",
+    "dwm.exe", "explorer.exe",
+}
+
+
+def _terminate_process(pid: int, reason: str = "") -> dict:
+    """终止指定进程。
+
+    这是项目里**唯一**能让 Agent 主动改变系统运行状态的工具，因此它标注了
+    `requires_approval=True`，会经过 approval 节点的 interrupt() 等用户确认 ——
+    闸门在这里是必需条件，不是可选项。
+
+    在闸门之外还有一层硬保护：系统关键进程直接拒绝，不因为用户点了"批准"就放行。
+    「用户批准了」不等于「这件事该做」。
+    """
+    try:
+        import psutil
+    except ImportError:
+        return {"error": "psutil 不可用"}
+
+    if not isinstance(pid, int) or pid <= 4:
+        return {"error": f"拒绝：PID {pid} 属于系统保留进程"}
+
+    if pid == os.getpid():
+        return {"error": "拒绝：不能终止守护进程自身"}
+
+    try:
+        proc = psutil.Process(pid)
+        name = (proc.name() or "").lower()
+    except psutil.NoSuchProcess:
+        return {"error": f"进程 {pid} 不存在"}
+    except psutil.AccessDenied:
+        return {"error": f"读取进程 {pid} 被拒绝（需要管理员权限）"}
+
+    if name in PROTECTED_PROCESS_NAMES:
+        return {
+            "error": f"拒绝：{name} (PID {pid}) 是系统关键进程，终止它会导致系统不稳定。",
+            "protected": True,
+        }
+
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except psutil.TimeoutExpired:
+            proc.kill()   # 不体面退出就强杀
+        logger.warning("已终止进程: %s (PID %s) — %s", name, pid, reason or "未说明")
+        return {"success": True, "pid": pid, "name": name, "reason": reason}
+    except psutil.AccessDenied:
+        return {"error": f"终止进程 {pid} 被拒绝（需要管理员权限）"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"终止进程失败: {e}"}
 
 
 def _check_firewall() -> dict:
@@ -228,9 +302,7 @@ def _check_command(command: str) -> dict:
     return sandbox.quick_check(command)
 
 
-# ================================================================
-#  Build default registry
-# ================================================================
+# ---- Build default registry ----
 
 def create_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
@@ -253,6 +325,29 @@ def create_tool_registry() -> ToolRegistry:
                     "etc.) and processes exceeding CPU/memory thresholds.",
         parameters={},
         handler=_scan_processes,
+    ))
+
+    registry.register(ToolDef(
+        name="terminate_process",
+        description="Terminate a running process by PID. Only use this for "
+                    "processes you have already identified as malicious. "
+                    "Requires explicit user approval, and refuses to touch "
+                    "critical system processes (lsass, csrss, winlogon, ...).",
+        parameters={
+            "pid": {
+                "type": "integer",
+                "description": "Process ID to terminate",
+                "required": True,
+            },
+            "reason": {
+                "type": "string",
+                "description": "Why this process should be terminated",
+            },
+        },
+        handler=_terminate_process,
+        # 唯一能让 Agent 改变系统运行状态的工具 —— 执行前必须人工批准
+        requires_approval=True,
+        risk_level="sensitive",
     ))
 
     registry.register(ToolDef(
@@ -323,6 +418,9 @@ def create_tool_registry() -> ToolRegistry:
         },
         handler=_run_command,
         require_admin=False,
+        # 能起进程 —— 执行前必须人工批准（见 agent/graph.py 的 approval 节点）
+        requires_approval=True,
+        risk_level="caution",
     ))
 
     registry.register(ToolDef(
@@ -542,6 +640,9 @@ def create_tool_registry() -> ToolRegistry:
             },
         },
         handler=install_skill,
+        # 会往 skills/ 写文件 —— 执行前必须人工批准
+        requires_approval=True,
+        risk_level="sensitive",
     ))
 
     registry.register(ToolDef(
@@ -565,6 +666,9 @@ def create_tool_registry() -> ToolRegistry:
             },
         },
         handler=recommend_mcp_server,
+        # 输出的是会被用户粘贴进 config.yaml 的启动命令 —— 执行前必须人工批准
+        requires_approval=True,
+        risk_level="caution",
     ))
 
     registry.register(ToolDef(
@@ -691,3 +795,4 @@ def create_tool_registry() -> ToolRegistry:
     ))
 
     return registry
+

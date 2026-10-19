@@ -5,6 +5,7 @@
 import time
 from unittest.mock import MagicMock, PropertyMock
 
+import pytest
 from character_manager import CharacterManager
 
 
@@ -14,46 +15,17 @@ class TestExpressionMapping:
     def setup_method(self):
         self.cm = CharacterManager(MagicMock(), llm_client=None)
 
-    def test_danger_returns_angry(self):
-        assert self.cm.get_expression({'sec_level': 'danger'}) == self.cm.EXP_ANGRY
-
-    def test_warning_returns_worried(self):
-        assert self.cm.get_expression({'sec_level': 'warning'}) == self.cm.EXP_WORRIED
-
-    def test_working_returns_working(self):
-        assert self.cm.get_expression({
-            'sec_level': 'safe',
-            'ai_status': 'working',
-            'threat_count': 0,
-        }) == self.cm.EXP_WORKING
-
-    def test_alert_returns_worried(self):
-        assert self.cm.get_expression({
-            'sec_level': 'safe',
-            'ai_status': 'alert',
-            'threat_count': 0,
-        }) == self.cm.EXP_WORRIED
-
-    def test_offline_returns_sleep(self):
-        assert self.cm.get_expression({
-            'sec_level': 'safe',
-            'ai_status': 'offline',
-            'threat_count': 0,
-        }) == self.cm.EXP_SLEEP
-
-    def test_safe_no_threats_returns_happy(self):
-        assert self.cm.get_expression({
-            'sec_level': 'safe',
-            'ai_status': 'idle',
-            'threat_count': 0,
-        }) == self.cm.EXP_HAPPY
-
-    def test_safe_with_threats_returns_idle(self):
-        assert self.cm.get_expression({
-            'sec_level': 'safe',
-            'ai_status': 'idle',
-            'threat_count': 2,
-        }) == self.cm.EXP_IDLE
+    @pytest.mark.parametrize("state,expected_name", [
+        ({'sec_level': 'danger'}, "EXP_ANGRY"),
+        ({'sec_level': 'warning'}, "EXP_WORRIED"),
+        ({'sec_level': 'safe', 'ai_status': 'working', 'threat_count': 0}, "EXP_WORKING"),
+        ({'sec_level': 'safe', 'ai_status': 'alert', 'threat_count': 0}, "EXP_WORRIED"),
+        ({'sec_level': 'safe', 'ai_status': 'offline', 'threat_count': 0}, "EXP_SLEEP"),
+        ({'sec_level': 'safe', 'ai_status': 'idle', 'threat_count': 0}, "EXP_HAPPY"),
+        ({'sec_level': 'safe', 'ai_status': 'idle', 'threat_count': 2}, "EXP_IDLE"),
+    ])
+    def test_expression_mapping(self, state, expected_name):
+        assert self.cm.get_expression(state) == getattr(self.cm, expected_name)
 
 
 class TestLineGeneration:
@@ -73,15 +45,14 @@ class TestLineGeneration:
         assert line is not None
         assert len(line) >= 2
 
-    def test_cleared_line(self, sample_state):
-        line = self.cm.get_line(sample_state, trigger='cleared')
+    @pytest.mark.parametrize("trigger,key", [
+        ("cleared", "threat_cleared"),
+        ("interaction", "greeting"),
+    ])
+    def test_trigger_line_from_library(self, sample_state, trigger, key):
+        line = self.cm.get_line(sample_state, trigger=trigger)
         assert line is not None
-        assert line in self.cm.DEFAULT_LINES['threat_cleared']
-
-    def test_interaction_line(self, sample_state):
-        line = self.cm.get_line(sample_state, trigger='interaction')
-        assert line is not None
-        assert line in self.cm.DEFAULT_LINES['greeting']
+        assert line in self.cm.DEFAULT_LINES[key]
 
     def test_auto_line_respects_cooldown(self, sample_state):
         self.cm._line_cooldown = 60  # 60秒冷却
@@ -89,19 +60,17 @@ class TestLineGeneration:
         line = self.cm.get_line(sample_state, trigger='auto')
         assert line is None  # 冷却中不出台词
 
-    def test_danger_state_gives_danger_line(self, danger_state):
+    @pytest.mark.parametrize("fixture_name,key", [
+        ("danger_state", "danger"),
+        ("warning_state", "warning"),
+    ])
+    def test_adaptive_line_for_level(self, request, fixture_name, key):
+        state = request.getfixturevalue(fixture_name)
         self.cm._line_cooldown = 0
         self.cm._last_line_time = 0
         self.cm._last_state_hash = ''
-        line = self.cm._pick_adaptive_line(danger_state)
-        assert line in self.cm.DEFAULT_LINES['danger']
-
-    def test_warning_state_gives_warning_line(self, warning_state):
-        self.cm._line_cooldown = 0
-        self.cm._last_line_time = 0
-        self.cm._last_state_hash = ''
-        line = self.cm._pick_adaptive_line(warning_state)
-        assert line in self.cm.DEFAULT_LINES['warning']
+        line = self.cm._pick_adaptive_line(state)
+        assert line in self.cm.DEFAULT_LINES[key]
 
     def test_firewall_off_line(self, sample_state):
         sample_state['firewall_on'] = False

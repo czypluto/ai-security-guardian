@@ -28,9 +28,7 @@ import urllib.request
 
 logger = logging.getLogger("Guardian.Defender")
 
-# ================================================================
-#  Windows Defender (via PowerShell)
-# ================================================================
+# ---- Windows Defender (via PowerShell) ----
 
 def _ps(cmd: str, timeout: int = 60) -> dict:
     """Run a PowerShell command, return parsed result."""
@@ -55,18 +53,26 @@ def _ps(cmd: str, timeout: int = 60) -> dict:
         return {"success": False, "error": str(e)}
 
 
+def _defender_action(ps_command: str, message: str) -> dict:
+    r = _ps(ps_command)
+    r["message"] = message
+    return r
+
+
 def defender_quick_scan() -> dict:
     """Trigger a Windows Defender quick scan."""
-    r = _ps("Start-MpScan -ScanType QuickScan -ErrorAction SilentlyContinue; Write-Host 'Quick scan started'")
-    r["message"] = "Quick scan started. Check status with defender_threat_list."
-    return r
+    return _defender_action(
+        "Start-MpScan -ScanType QuickScan -ErrorAction SilentlyContinue; Write-Host 'Quick scan started'",
+        "Quick scan started. Check status with defender_threat_list.",
+    )
 
 
 def defender_full_scan() -> dict:
     """Trigger a Windows Defender full scan."""
-    r = _ps("Start-MpScan -ScanType FullScan -ErrorAction SilentlyContinue; Write-Host 'Full scan started'")
-    r["message"] = "Full scan started. This may take hours. Check status later."
-    return r
+    return _defender_action(
+        "Start-MpScan -ScanType FullScan -ErrorAction SilentlyContinue; Write-Host 'Full scan started'",
+        "Full scan started. This may take hours. Check status later.",
+    )
 
 
 def defender_threat_list() -> dict:
@@ -126,9 +132,10 @@ $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
 
 def defender_update_signatures() -> dict:
     """Update Windows Defender virus signatures."""
-    r = _ps("Update-MpSignature -ErrorAction SilentlyContinue; Write-Host 'Signature update triggered'")
-    r["message"] = "Signature update triggered."
-    return r
+    return _defender_action(
+        "Update-MpSignature -ErrorAction SilentlyContinue; Write-Host 'Signature update triggered'",
+        "Signature update triggered.",
+    )
 
 
 def _severity_label(severity_id: int) -> str:
@@ -137,9 +144,7 @@ def _severity_label(severity_id: int) -> str:
     return labels.get(severity_id, f"level_{severity_id}")
 
 
-# ================================================================
-#  NVD (National Vulnerability Database) — CVE Lookup
-# ================================================================
+# ---- NVD (National Vulnerability Database) — CVE Lookup ----
 
 NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
@@ -221,3 +226,4 @@ def nvd_cve_search(keyword: str, limit: int = 10) -> dict:
         "total_results": data.get("totalResults", 0),
         "results": results,
     }
+

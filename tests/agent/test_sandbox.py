@@ -7,6 +7,8 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 _mock_ctypes = MagicMock()
 _mock_ctypes.windll = MagicMock()
 _mock_ctypes.windll.kernel32 = MagicMock()
@@ -25,9 +27,7 @@ from agent.sandbox import (  # noqa: E402  需先 mock ctypes
     SandboxExecutor,
 )
 
-# ================================================================
-#  CommandValidator — 命令白名单/黑名单
-# ================================================================
+# ---- CommandValidator — 命令白名单/黑名单 ----
 
 class TestCommandValidator:
     """CommandValidator.validate() 白名单和黑名单逻辑."""
@@ -56,24 +56,15 @@ class TestCommandValidator:
         assert allowed is True
         assert reason == "ok"
 
-    def test_netstat_allowed(self):
-        allowed, _ = self.validator.validate("netstat -an")
-        assert allowed is True
-
-    def test_tasklist_allowed(self):
-        allowed, _ = self.validator.validate("tasklist /v")
-        assert allowed is True
-
-    def test_whoami_allowed(self):
-        allowed, _ = self.validator.validate("whoami")
-        assert allowed is True
-
-    def test_ping_allowed(self):
-        allowed, _ = self.validator.validate("ping -n 1 127.0.0.1")
-        assert allowed is True
-
-    def test_dir_allowed(self):
-        allowed, _ = self.validator.validate("dir /s")
+    @pytest.mark.parametrize("cmd", [
+        "netstat -an",
+        "tasklist /v",
+        "whoami",
+        "ping -n 1 127.0.0.1",
+        "dir /s",
+    ])
+    def test_known_safe_commands_allowed(self, cmd):
+        allowed, _ = self.validator.validate(cmd)
         assert allowed is True
 
     def test_safe_prefix_command_allowed(self):
@@ -88,34 +79,22 @@ class TestCommandValidator:
         assert allowed is False
         assert "blocked" in reason.lower()
 
-    def test_format_blocked(self):
-        allowed, reason = self.validator.validate("format c:")
-        assert allowed is False
-
-    def test_shutdown_blocked(self):
-        allowed, reason = self.validator.validate("shutdown /s /t 0")
-        assert allowed is False
-
-    def test_reg_add_blocked(self):
-        allowed, reason = self.validator.validate("reg add HKLM\\...")
+    @pytest.mark.parametrize("cmd", [
+        "format c:",
+        "shutdown /s /t 0",
+        "reg add HKLM\\...",
+        "ipconfig; del file.txt",
+        "ipconfig & whoami",
+        "ipconfig && whoami",
+    ])
+    def test_known_blocked_commands(self, cmd):
+        allowed, reason = self.validator.validate(cmd)
         assert allowed is False
 
     def test_pipe_blocked(self):
         allowed, reason = self.validator.validate("ipconfig | findstr")
         assert allowed is False
         assert "blocked" in reason.lower()
-
-    def test_semicolon_blocked(self):
-        allowed, reason = self.validator.validate("ipconfig; del file.txt")
-        assert allowed is False
-
-    def test_ampersand_blocked(self):
-        allowed, reason = self.validator.validate("ipconfig & whoami")
-        assert allowed is False
-
-    def test_double_ampersand_blocked(self):
-        allowed, reason = self.validator.validate("ipconfig && whoami")
-        assert allowed is False
 
     def test_unknown_command_blocked(self):
         """不在白名单中的命令应该被拒绝（fail-closed）."""
@@ -150,9 +129,7 @@ class TestCommandValidator:
         assert "tasklist" in cmds
 
 
-# ================================================================
-#  Constants 验证
-# ================================================================
+# ---- Constants 验证 ----
 
 class TestSandboxConstants:
     """沙箱常量的范围和完整性."""
@@ -177,9 +154,7 @@ class TestSandboxConstants:
         assert DEFAULT_MAX_OUTPUT_BYTES == 16384  # 16KB
 
 
-# ================================================================
-#  SandboxExecutor.quick_check
-# ================================================================
+# ---- SandboxExecutor.quick_check ----
 
 class TestSandboxQuickCheck:
     """SandboxExecutor.quick_check() — 不实际执行命令."""
@@ -201,9 +176,7 @@ class TestSandboxQuickCheck:
         assert result["allowed"] is False
 
 
-# ================================================================
-#  AuditLogger
-# ================================================================
+# ---- AuditLogger ----
 
 class TestAuditLogger:
     """AuditLogger.record() 日志格式."""
@@ -251,9 +224,7 @@ class TestAuditLogger:
         assert len(entry["command"]) <= 200
 
 
-# ================================================================
-#  SandboxExecutor.execute (mock subprocess)
-# ================================================================
+# ---- SandboxExecutor.execute (mock subprocess) ----
 
 class TestSandboxExecute:
     """SandboxExecutor.execute() — 通过 mock subprocess 测试执行路径."""
@@ -269,3 +240,4 @@ class TestSandboxExecute:
     def test_empty_command_returns_error(self):
         result = self.sandbox.execute("")
         assert result["success"] is False
+

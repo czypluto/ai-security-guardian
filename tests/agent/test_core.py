@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -20,9 +21,7 @@ from agent.config import AgentConfig, LLMProvider  # noqa: E402  需先 mock cty
 from agent.core import AgentCore  # noqa: E402
 from agent.tools import ToolDef, ToolRegistry  # noqa: E402
 
-# ================================================================
-#  Helpers
-# ================================================================
+# ---- Helpers ----
 
 def _make_minimal_config():
     return AgentConfig(
@@ -32,6 +31,8 @@ def _make_minimal_config():
         mcp_servers=[],
         skill_dirs=[],
         knowledge_base_enabled=False,
+        # 测试一律用内存 checkpointer，否则每个用例都会往真实的 data/ 写 SQLite
+        checkpoint_backend="memory",
     )
 
 
@@ -55,9 +56,7 @@ def _make_tool_registry():
     return registry
 
 
-# ================================================================
-#  AgentCore 初始化
-# ================================================================
+# ---- AgentCore 初始化 ----
 
 class TestAgentCoreInit:
     """AgentCore.__init__() 和各组件集成."""
@@ -118,9 +117,7 @@ class TestAgentCoreInit:
         assert "test-provider" in active
 
 
-# ================================================================
-#  _build_system_prompt
-# ================================================================
+# ---- _build_system_prompt ----
 
 class TestSystemPrompt:
     """系统提示词构建."""
@@ -138,9 +135,7 @@ class TestSystemPrompt:
         assert "scan_network" in prompt
 
 
-# ================================================================
-#  run() — ReAct Loop 基本行为
-# ================================================================
+# ---- run() — ReAct Loop 基本行为 ----
 
 class TestRunBasic:
     """run() 基本行为."""
@@ -154,16 +149,21 @@ class TestRunBasic:
         assert isinstance(result, str)
 
     def test_run_collects_text_events(self):
-        """run() 从 run_stream 中收集 type='text' 事件."""
+        """run() 从 run_stream 中收集 type='text' 事件。
+
+        这里 patch 的是 `agent.llm.chat`，而适配层 GuardianChatModel._generate
+        正是转发给它 —— 所以本用例实际走的是「真实适配层 + 状态图」的完整路径，
+        不是绕过它们。
+        """
         config = AgentConfig(
             providers=[_make_provider()],
             max_iterations=3,
             stream_output=False,
             knowledge_base_enabled=False,
+            checkpoint_backend="memory",
         )
         agent = AgentCore(config, tool_registry=_make_tool_registry())
 
-        # Mock LLM to return a proper dict response that produces text
         with patch.object(agent.llm, 'chat') as mock_chat:
             mock_chat.return_value = {
                 "_ok": True,
@@ -174,23 +174,27 @@ class TestRunBasic:
                     }
                 }]
             }
-            with patch.object(agent.llm, 'has_tool_calls', return_value=False), \
-                 patch.object(agent.llm, 'extract_reply', return_value="All systems secure."):
-                result = agent.run("check security")
-                assert "All systems secure" in result
+            result = agent.run("check security")
+            assert "All systems secure" in result
+            assert mock_chat.call_count == 1
 
     def test_run_stops_at_max_iterations(self):
-        """达到 max_iterations 时停止并产生 fallback 消息."""
+        """达到 max_iterations 时停止并产生 fallback 消息。
+
+        语义上限由 agent 节点里的 iteration 判断把关（与原 while 循环等价），
+        不是靠 LangGraph 的 recursion_limit 兜底。
+        """
         config = AgentConfig(
             providers=[_make_provider()],
             max_iterations=2,
             stream_output=False,
             knowledge_base_enabled=False,
+            checkpoint_backend="memory",
         )
         agent = AgentCore(config, tool_registry=_make_tool_registry())
 
         with patch.object(agent.llm, 'chat') as mock_chat:
-            # Always returns a tool call so the loop doesn't exit on text
+            # 永远要求调工具 -> 只能靠迭代上限收场
             mock_chat.return_value = {
                 "_ok": True,
                 "choices": [{
@@ -203,17 +207,42 @@ class TestRunBasic:
                     }
                 }]
             }
-            with patch.object(agent.llm, 'has_tool_calls', return_value=True), \
-                 patch.object(agent.llm, 'extract_tool_calls', return_value=[{
-                     "function": {"name": "mock_tool", "arguments": '{"arg":"test"}'}
-                 }]):
-                result = agent.run("test")
-                assert isinstance(result, str)
+            result = agent.run("test")
+            assert isinstance(result, str)
+            assert mock_chat.call_count == 2          # 恰好 max_iterations 次
+            assert "Max iterations reached" in result
 
 
-# ================================================================
-#  run_stream()
-# ================================================================
+# ---- run_stream() ----
+
+def _stream_events(*calls):
+    """构造 LLMRouter.chat_stream 的假实现：第 N 次调用 yield 第 N 组事件。
+
+    流式路径走的是 chat_stream 而不是 chat，所以 stream_output=True 的用例
+    必须把它也 mock 掉，否则会去打真实的网络端点。
+    """
+    seq = list(calls)
+    state = {"i": 0}
+
+    def _impl(*args, **kwargs):
+        idx = min(state["i"], len(seq) - 1)
+        state["i"] += 1
+        for event in seq[idx]:
+            yield event
+
+    return _impl
+
+
+def _text(chunk):
+    return {"type": "text", "content": chunk}
+
+
+def _tool_call_events(name, args_json, call_id="c1"):
+    return [{"type": "tool_call", "tool_call": {
+        "id": call_id,
+        "function": {"name": name, "arguments": args_json},
+    }}]
+
 
 class TestRunStream:
     """流式输出 ReAct 循环."""
@@ -224,22 +253,17 @@ class TestRunStream:
             max_iterations=3,
             stream_output=True,
             knowledge_base_enabled=False,
+            checkpoint_backend="memory",
         )
         agent = AgentCore(config, tool_registry=_make_tool_registry())
 
-        with patch.object(agent.llm, 'chat') as mock_chat:
-            mock_chat.return_value = {
-                "_ok": True,
-                "choices": [{
-                    "message": {"role": "assistant", "content": "All secure"}
-                }]
-            }
-            with patch.object(agent.llm, 'has_tool_calls', return_value=False), \
-                 patch.object(agent.llm, 'extract_reply', return_value="All secure"):
-                events = list(agent.run_stream("status check"))
-                text_events = [e for e in events if e["type"] == "text"]
-                assert len(text_events) >= 1
-                assert "All secure" in text_events[0]["content"]
+        with patch.object(agent.llm, 'chat_stream',
+                          side_effect=_stream_events([_text("All "), _text("secure")])):
+            events = list(agent.run_stream("status check"))
+            text_events = [e for e in events if e["type"] == "text"]
+            # 逐 token：两个增量事件，拼起来才是完整回复
+            assert [e["content"] for e in text_events] == ["All ", "secure"]
+            assert "".join(e["content"] for e in text_events) == "All secure"
 
     def test_stream_yields_tool_events(self):
         config = AgentConfig(
@@ -247,56 +271,39 @@ class TestRunStream:
             max_iterations=5,
             stream_output=True,
             knowledge_base_enabled=False,
+            checkpoint_backend="memory",
         )
         registry = _make_tool_registry()
         agent = AgentCore(config, tool_registry=registry)
 
-        responses = [
-            {  # First: tool call
-                "_ok": True,
-                "choices": [{"message": {"role": "assistant",
-                    "tool_calls": [{"id": "c1", "function": {
-                        "name": "mock_tool", "arguments": '{"arg":"hello"}'
-                    }}]}
-                }]
-            },
-            {  # Second: final text
-                "_ok": True,
-                "choices": [{"message": {"role": "assistant",
-                    "content": "Done checking"}}]
-            },
-        ]
-        call_idx = [0]
-        def chat_side_effect(*args, **kwargs):
-            resp = responses[call_idx[0]]
-            call_idx[0] += 1
-            return resp
-
-        tool_call_results = [True, False]
-
-        with patch.object(agent.llm, 'chat', side_effect=chat_side_effect), \
-             patch.object(agent.llm, 'has_tool_calls', side_effect=tool_call_results), \
-             patch.object(agent.llm, 'extract_tool_calls', return_value=[{
-                 "function": {"name": "mock_tool", "arguments": '{"arg":"hello"}'}
-             }]), \
-             patch.object(agent.llm, 'extract_reply', return_value="Done checking"):
+        with patch.object(agent.llm, 'chat_stream',
+                          side_effect=_stream_events(
+                              _tool_call_events("mock_tool", '{"arg":"hello"}'),
+                              [_text("Done checking")])) as mock_stream:
             events = list(agent.run_stream("check"))
             event_types = [e["type"] for e in events]
-            assert "tool_start" in event_types
-            assert "tool_result" in event_types
-            assert "text" in event_types
+            assert event_types == ["tool_start", "tool_result", "text"]
+            assert mock_stream.call_count == 2
+
+        # 工具结果必须回喂给模型
+        assert "hello" in json.dumps(events[1]["result"], ensure_ascii=False)
 
     def test_stream_handles_llm_error(self):
-        """LLM 返回错误时产生 error 事件并停止."""
+        """LLM 全部 provider 失败时产生 error 事件并停止（不是抛异常）。"""
         config = AgentConfig(
             providers=[_make_provider()],
             max_iterations=3,
             stream_output=True,
             knowledge_base_enabled=False,
+            checkpoint_backend="memory",
         )
         agent = AgentCore(config)
 
-        with patch.object(agent.llm, 'chat') as mock_chat:
+        # 流式路径首字未出就失败 -> 回退到 invoke 路径；两条都失败才是真失败
+        with patch.object(agent.llm, 'chat_stream',
+                          side_effect=_stream_events(
+                              [{"type": "error", "content": "API rate limit exceeded"}])), \
+             patch.object(agent.llm, 'chat') as mock_chat:
             mock_chat.return_value = {
                 "_ok": False,
                 "_error": "API rate limit exceeded"
@@ -306,9 +313,7 @@ class TestRunStream:
             assert len(error_events) >= 1
 
 
-# ================================================================
-#  MCP 工具集成
-# ================================================================
+# ---- MCP 工具集成 ----
 
 class TestMCPIntegration:
     """MCP 工具合并."""
@@ -335,9 +340,7 @@ class TestMCPIntegration:
         assert tool is not None
 
 
-# ================================================================
-#  Conversation Management
-# ================================================================
+# ---- Conversation Management ----
 
 class TestConversationManagement:
     """对话历史管理."""
@@ -362,3 +365,116 @@ class TestConversationManagement:
         assert agent._kb_enabled is False
         result = agent.save_conversation()
         assert result is None
+
+
+# ---- 审批闸门（经由 AgentCore 的中断循环）----
+
+def _gated_agent(handler, **config_overrides):
+    """一个带需要审批工具的 AgentCore。"""
+    config = AgentConfig(
+        providers=[_make_provider()],
+        max_iterations=3,
+        # 这些用例测的是审批闸门，不是流式，走 invoke 路径即可
+        # （流式路径要 mock chat_stream，见 TestRunStream）
+        stream_output=False,
+        knowledge_base_enabled=False,
+        checkpoint_backend="memory",
+        **config_overrides,
+    )
+    registry = ToolRegistry()
+    registry.register(ToolDef(
+        name="run_command", description="run",
+        parameters={"command": {"type": "string"}},
+        handler=handler, requires_approval=True, risk_level="caution",
+    ))
+    return AgentCore(config, tool_registry=registry)
+
+
+def _two_turn_llm(agent):
+    """第一次要调 run_command，第二次给最终文本。"""
+    responses = [
+        {"_ok": True, "choices": [{"message": {"role": "assistant", "tool_calls": [
+            {"id": "c1", "function": {"name": "run_command",
+                                      "arguments": '{"command":"ipconfig"}'}}]}}]},
+        {"_ok": True, "choices": [{"message": {"role": "assistant", "content": "已执行"}}]},
+    ]
+    idx = [0]
+
+    def side_effect(*args, **kwargs):
+        resp = responses[min(idx[0], len(responses) - 1)]
+        idx[0] += 1
+        return resp
+
+    return patch.object(agent.llm, "chat", side_effect=side_effect)
+
+
+class TestApprovalThroughAgentCore:
+    """core.run_stream 的中断 -> 询问 -> Command(resume) 循环。
+
+    图本身有 test_graph.py 覆盖；这里专门验证 AgentCore 这一层的接线 ——
+    它是 P3 改造里风险最高的部分（生成器 + 恢复的交互）。
+    """
+
+    def test_approved_executes_once(self):
+        handler = MagicMock(return_value={"ok": True})
+        agent = _gated_agent(handler)
+        asked = []
+        agent._ask_approval = lambda payload: (
+            asked.append(payload), {"approved": True, "reason": "test"})[1]
+
+        with _two_turn_llm(agent):
+            events = list(agent.run_stream("跑一下 ipconfig"))
+
+        assert [p["tool"] for p in asked] == ["run_command"]
+        assert asked[0]["risk_level"] == "caution"
+        assert handler.call_count == 1
+        assert [e["type"] for e in events] == ["tool_start", "tool_result", "text"]
+        assert events[-1]["content"] == "已执行"
+
+    def test_rejected_skips_execution_and_continues(self):
+        handler = MagicMock(return_value={"ok": True})
+        agent = _gated_agent(handler)
+        agent._ask_approval = lambda payload: {"approved": False, "reason": "test_denied"}
+
+        with _two_turn_llm(agent) as mock_chat:
+            events = list(agent.run_stream("跑一下 ipconfig"))
+
+        assert handler.call_count == 0
+        assert [e["type"] for e in events] == ["text"]     # 没有 tool_start/tool_result
+        # 模型仍被调了第二次，且看到的是「被拒绝」的工具结果
+        assert mock_chat.call_count == 2
+        assert events[-1]["content"] == "已执行"
+
+    def test_auto_approve_mode_never_asks(self):
+        handler = MagicMock(return_value={"ok": True})
+        agent = _gated_agent(handler, approval_mode="auto_approve")
+        agent._ask_approval = MagicMock(side_effect=AssertionError("不该被问到"))
+
+        with _two_turn_llm(agent):
+            list(agent.run_stream("跑一下"))
+
+        assert handler.call_count == 1
+
+    def test_auto_reject_mode_never_asks(self):
+        handler = MagicMock(return_value={"ok": True})
+        agent = _gated_agent(handler, approval_mode="auto_reject")
+        agent._ask_approval = MagicMock(side_effect=AssertionError("不该被问到"))
+
+        with _two_turn_llm(agent):
+            list(agent.run_stream("跑一下"))
+
+        assert handler.call_count == 0
+
+    def test_clear_conversation_rotates_thread(self):
+        """换 thread 后旧 checkpoint 不再影响新对话。"""
+        agent = _gated_agent(MagicMock(return_value={"ok": True}))
+        before = agent._thread_id
+        agent.clear_conversation()
+        assert agent._thread_id != before
+        assert agent._graph_config["configurable"]["thread_id"] == agent._thread_id
+
+    def test_summary_skills_active_reads_last_round(self):
+        agent = _gated_agent(MagicMock(return_value={"ok": True}))
+        assert agent.summary()["skills_active"] is None
+        assert "model" in agent.summary()
+

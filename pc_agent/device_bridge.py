@@ -54,8 +54,8 @@ class DeviceBridge:
         self._max_cmds_per_sec = 20  # 每秒最多 20 条命令
 
         if self._egress_guard:
+            # enable_monitoring() 自己会打日志，这里不再重复打一条
             self._egress_guard.enable_monitoring()
-            logger.info("Serial egress guard enabled — ESP32 data stays local")
 
     def connect(self) -> bool:
         """自动选择模式连接设备 (安全: 默认仅 Serial, WiFi 需显式配置)"""
@@ -112,9 +112,9 @@ class DeviceBridge:
             self.serial_conn.reset_input_buffer()
             self.serial_conn.reset_output_buffer()
 
-            # 读启动消息
+            # 读启动消息（走结构化指纹校验，不再只是子串匹配）
             startup = self._read_line(timeout=3)
-            if startup and 'ready' in startup:
+            if startup and self._handshake_ok(startup):
                 self.logger.debug(f"设备启动消息: {startup}")
                 return True
 
@@ -211,12 +211,38 @@ class DeviceBridge:
             try:
                 line = self._read_line(timeout=0.5)
                 if line:
+                    # 外泄防护的**唯一执行点**：设备数据只允许流向本地日志。
+                    # 之前 SerialEgressGuard.check_egress_safety 定义了却零调用，
+                    # 「外泄防护」实际只是个开关。放在这里它才是活的 ——
+                    # 将来若有人把这一行改成往网络转发，守卫会拦下来。
+                    if self._egress_guard and not self._egress_guard.check_egress_safety(
+                            line, "log"):
+                        continue
                     self.logger.debug(f"← 设备: {line[:80]}")
                     # 如果收到 pong，说明连接正常
                     if 'pong' in line:
                         pass
             except Exception:
                 pass  # 读取出错不影响主流程
+
+    def _handshake_ok(self, startup: str) -> bool:
+        """校验设备启动握手。
+
+        原来只是 `'ready' in startup` 的子串判断 —— 任何含 "ready" 的字符串都能过。
+        改走 FirmwareIntegrityChecker.verify_handshake 的结构化匹配：要求 JSON 里
+        出现 status=ready / type=tdisplay|oled / fingerprint 三者之一，
+        这样「固件指纹握手」才名副其实。
+
+        agent 模块不可用时退回子串判断 —— 固件校验不该阻断连接。
+        """
+        try:
+            from agent.esp32_isolation import FirmwareIntegrityChecker
+        except ImportError:
+            return "ready" in startup
+        result = FirmwareIntegrityChecker.verify_handshake(startup)
+        if not result.get("ok"):
+            self.logger.warning(f"设备握手格式不符预期: {startup[:80]}")
+        return bool(result.get("ok"))
 
     def disconnect(self):
         """断开连接"""

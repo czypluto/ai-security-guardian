@@ -28,11 +28,11 @@ import sys
 import time
 from pathlib import Path
 
+from . import c2_ports
+
 logger = logging.getLogger("Guardian.ESP32Isolation")
 
-# ================================================================
-#  Allowed Serial Commands (PC → ESP32)
-# ================================================================
+# ---- Allowed Serial Commands (PC → ESP32) ----
 
 # The ESP32 should ONLY accept these commands from the PC.
 # Any other command structure is suspicious.
@@ -75,7 +75,9 @@ ALLOWED_COMMANDS = {
 }
 
 # Maximum serial data rate (bytes per second)
-MAX_SERIAL_RATE_BPS = 4096
+# 注：这里曾有一个 MAX_SERIAL_RATE_BPS = 4096，全项目零引用，已删除。
+# 真正的串口速率限制在 pc_agent/device_bridge.py 的 _max_cmds_per_sec（每秒条数，
+# 而不是每秒字节数）—— 那才是生效的那份。
 
 # Maximum consecutive invalid commands before lockdown
 MAX_INVALID_COMMANDS = 10
@@ -230,9 +232,7 @@ class SerialEgressGuard:
         }
 
 
-# ================================================================
-#  Windows Firewall Rule Manager
-# ================================================================
+# ---- Windows Firewall Rule Manager ----
 
 class FirewallRuleManager:
     """
@@ -246,11 +246,13 @@ class FirewallRuleManager:
 
     GUARDIAN_RULE_PREFIX = "AI_Security_Guardian"
 
-    # Ports the guardian NEEDS to access (API calls)
-    ALLOWED_OUTBOUND_PORTS = {443, 80}  # HTTPS + HTTP for API calls
-
-    # Ports the guardian should NEVER use
-    BLOCKED_PORTS = {4444, 31337, 6666, 6667, 6697, 8080, 8443, 9001, 9999}
+    # 端口清单统一在 agent/c2_ports.py。
+    #
+    # 这里原本有两个常量 `ALLOWED_OUTBOUND_PORTS = {443, 80}` 和
+    # `BLOCKED_PORTS = {4444, ...}`，**都只被定义、从没被读过** ——
+    # 真正生效的是下面 generate_rules_script() 模板里硬编码的那串端口。
+    # 也就是说：看起来像"唯一来源"的常量是死的，改它没有任何效果。
+    # 现在模板直接引用 c2_ports，不再各写一份。
 
     @staticmethod
     def is_admin() -> bool:
@@ -283,7 +285,7 @@ New-NetFirewallRule -DisplayName "{cls.GUARDIAN_RULE_PREFIX}_Block_C2_Ports" `
     -Direction Outbound -Action Block `
     -Program $exePath `
     -Protocol TCP `
-    -RemotePort 4444,31337,6666,6667,6697,8080,8443,9001,9999 `
+    -RemotePort {c2_ports.csv()} `
     -Description "Block guardian Python process on known C2/backdoor ports"
 
 # Rule 2: Block guardian on suspicious ports (inbound)
@@ -328,9 +330,7 @@ Write-Host "Run: Get-NetFirewallRule -DisplayName '{cls.GUARDIAN_RULE_PREFIX}*' 
             return {"rules_installed": False, "error": str(e)}
 
 
-# ================================================================
-#  ESP32 Firmware Integrity (PC-side verification)
-# ================================================================
+# ---- ESP32 Firmware Integrity (PC-side verification) ----
 
 class FirmwareIntegrityChecker:
     """
@@ -424,9 +424,7 @@ class FirmwareIntegrityChecker:
         return {"ok": False, "error": "Startup handshake doesn't match expected format"}
 
 
-# ================================================================
-#  Unified ESP32 Isolation Report
-# ================================================================
+# ---- Unified ESP32 Isolation Report ----
 
 def run_isolation_audit() -> dict:
     """
@@ -487,9 +485,7 @@ def run_isolation_audit() -> dict:
     }
 
 
-# ================================================================
-#  CLI
-# ================================================================
+# ---- CLI ----
 
 if __name__ == "__main__":
     import argparse
@@ -544,3 +540,4 @@ if __name__ == "__main__":
             for r in report["recommendations"]:
                 print(f"    > {r}")
         print("\n" + "=" * 60)
+

@@ -26,9 +26,7 @@ from agent.tools import (  # noqa: E402  需先 mock ctypes
     create_tool_registry,
 )
 
-# ================================================================
-#  ToolDef
-# ================================================================
+# ---- ToolDef ----
 
 class TestToolDef:
     """ToolDef 工具定义和 schema 生成."""
@@ -194,9 +192,7 @@ class TestToolDef:
         assert parsed["admin"] == "yes"
 
 
-# ================================================================
-#  ToolRegistry
-# ================================================================
+# ---- ToolRegistry ----
 
 class TestToolRegistry:
     """ToolRegistry 注册/查找/执行/列表."""
@@ -250,9 +246,7 @@ class TestToolRegistry:
         assert "Unknown tool" in parsed["error"]
 
 
-# ================================================================
-#  create_tool_registry
-# ================================================================
+# ---- create_tool_registry ----
 
 class TestCreateToolRegistry:
     """create_tool_registry() 工厂函数."""
@@ -283,9 +277,7 @@ class TestCreateToolRegistry:
         assert "check_firewall" in tool_names
 
 
-# ================================================================
-#  _is_admin
-# ================================================================
+# ---- _is_admin ----
 
 class TestIsAdmin:
     """_is_admin() 管理员检测."""
@@ -301,3 +293,4 @@ class TestIsAdmin:
         with patch.dict(sys.modules, {"ctypes": None}):
             result = _is_admin()
         assert result is False
+

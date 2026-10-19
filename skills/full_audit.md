@@ -4,6 +4,8 @@ description: Full system security audit — network + processes + firewall + log
 triggers:
   - "全面扫描"
   - "安全审计"
+  - "全面审计"      # 「帮我全面审计一下系统」是很自然的说法
+  - "整体审计"
   - "full audit"
   - "audit my system"
   - "检查系统安全"

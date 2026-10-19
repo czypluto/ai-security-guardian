@@ -1,13 +1,17 @@
 ---
 name: ignore-false-positives
 description: 忽略已知误报：PID 284 Secure System、wpscloudsvr 等
+# 触发词刻意收窄。
+# 原来含 "scan" / "扫描" / "检查" / "威胁" —— 这些是**任何**安全查询都会出现的词，
+# 而 match_triggers 取第一个命中的技能，于是「扫描网络」会命中本技能而不是
+# network_scan，「勒索软件检查」也会。这个技能只应在用户明确抱怨误报时激活。
 triggers:
-  - "scan"
-  - "扫描"
-  - "检查"
-  - "威胁"
   - "误报"
   - "false positive"
+  - "不是威胁"
+  - "判断错了"
+  - "忽略了"
+  - "误判"
 ---
 
 

@@ -7,13 +7,8 @@ triggers:
   - "忽略进程"
   - "加白"
   - "扫描进程"
-  - "可疑进程"
----
-
----
-name: process-whitelist
-description: 进程扫描白名单，自动跳过已知安全的系统进程
-triggers: 白名单, whitelist, 忽略进程, 加白, 扫描进程, 可疑进程
+# 注：不再包含「可疑进程」—— 它与 process-check 的技能重复，而 match_triggers
+# 取第一个命中者，重复会让「激活了哪个技能」取决于字典序。
 ---
 
 # Process Whitelist Skill

@@ -1,3 +1,10 @@
+# 手工维护的依赖快照。
+#
+# **不是**安装来源：CI 与 Docker 全走 `poetry install`（poetry.lock 才是真相），
+# 仓库里没有任何脚本会解析这个文件。它唯一的用途是被
+# generate_integrity_manifest.py 纳入完整性清单哈希。
+#
+# 因此：新增依赖时手工补一行即可，不必与 poetry.lock 逐版本对齐。
 colorlog==6.10.1
 pillow==12.2.0
 psutil==7.2.2
@@ -12,3 +19,13 @@ pytest-timeout==2.4.0
 pywin32==305
 PyYAML==6.0.3
 requests==2.34.2
+
+# Agent 编排 (LangGraph) —— 核心依赖，见 pyproject.toml
+langgraph==1.2.15
+langgraph-checkpoint==4.3.0
+langgraph-checkpoint-sqlite==3.1.2
+langchain-core==1.6.11
+pydantic==2.13.4
+pydantic-core==2.46.4
+aiosqlite==0.22.1
+sqlite-vec==0.1.9

@@ -4,14 +4,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from unittest.mock import patch
 
 from agent.config import DEFAULT_SYSTEM_PROMPT, AgentConfig, LLMProvider
 
-# ================================================================
-#  LLMProvider Dataclass
-# ================================================================
+# ---- LLMProvider Dataclass ----
 
 class TestLLMProvider:
     """LLMProvider dataclass basic behavior."""
@@ -21,7 +18,7 @@ class TestLLMProvider:
         assert p.name == "test"
         assert p.max_tokens == 1024
         assert p.temperature == 0.7
-        assert p.timeout == 30
+        assert p.timeout == 15
         assert p.priority == 0
         assert p.enabled is True
 
@@ -46,9 +43,7 @@ class TestLLMProvider:
         assert sorted_providers[2].name == "low"
 
 
-# ================================================================
-#  AgentConfig 基本构造
-# ================================================================
+# ---- AgentConfig 基本构造 ----
 
 class TestAgentConfigConstruction:
     """AgentConfig dataclass construction."""
@@ -72,9 +67,7 @@ class TestAgentConfigConstruction:
         assert cfg.stream_output is False
 
 
-# ================================================================
-#  环境变量解析
-# ================================================================
+# ---- 环境变量解析 ----
 
 class TestEnvResolution:
     """AgentConfig._resolve_env — ${ENV_VAR} placeholder substitution."""
@@ -101,24 +94,26 @@ class TestEnvResolution:
             assert result == "1_2"
 
 
-# ================================================================
-#  .env 文件加载
-# ================================================================
+# ---- .env 文件加载 ----
 
 class TestDotenvLoading:
     """AgentConfig._load_dotenv — load .env into os.environ."""
 
-    def test_loads_env_file(self, temp_env_file, tmp_path):
-        """Verify .env loading parses KEY=VALUE pairs."""
-        # Change to tmp_path so .env is found
-        with patch.object(Path, '__init__', return_value=None), \
-             patch.object(Path, '__truediv__', return_value=Path(temp_env_file)):
-            # Actually test the loading via temp file
-            # Read the temp file directly
-            with open(temp_env_file, "r") as f:
-                content = f.read()
-            assert "DEEPSEEK_API_KEY" in content
-            assert "sk-test-key-from-env-file" in content
+    def test_loads_env_file(self, monkeypatch, tmp_path):
+        """_load_dotenv 应把 .env 中的 KEY=VALUE 写入 os.environ。"""
+        env_file = tmp_path / ".env"
+        env_file.write_text("DEEPSEEK_API_KEY=sk-test-from-env-file\n", encoding="utf-8")
+
+        # _load_dotenv 固定读取项目根/.env，把 os.path.join 指到临时文件即可触发
+        from agent import config as config_mod
+        monkeypatch.setattr(config_mod.os.path, "join", lambda *a: str(env_file))
+        monkeypatch.setattr(config_mod.os.path, "exists", lambda *a: True)
+
+        AgentConfig._load_dotenv()
+
+        assert os.environ.get("DEEPSEEK_API_KEY") == "sk-test-from-env-file"
+        # 清理，避免污染其他测试
+        os.environ.pop("DEEPSEEK_API_KEY", None)
 
     def test_idempotent_does_not_override(self, monkeypatch):
         """Existing env vars should NOT be overridden by _load_dotenv."""
@@ -136,9 +131,7 @@ class TestDotenvLoading:
         assert os.environ["EXISTING_KEY"] == "original-value"
 
 
-# ================================================================
-#  from_config_file 集成
-# ================================================================
+# ---- from_config_file 集成 ----
 
 class TestFromConfigFile:
     """AgentConfig.from_config_file() — full YAML config parsing."""
@@ -150,6 +143,80 @@ class TestFromConfigFile:
             assert cfg.providers[0].name == "deepseek"
             assert cfg.providers[0].model == "deepseek-chat"
             assert cfg.providers[0].api_key == "sk-integration-test"
+
+
+# ---- 多 provider ----
+
+def _write_yaml(tmp_path, llm_section):
+    import yaml
+
+    config = {"llm": llm_section, "mcp_servers": [], "skills": {"enabled": False}}
+    path = tmp_path / "multi.yaml"
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f)
+    return str(path)
+
+
+class TestMultipleProviders:
+    """三家供应商都要能装配上 —— 「多模型自动故障转移」的前提是有对象可转。
+
+    原先 from_config_file 只构造 DeepSeek，另外两家藏在一个几乎走不到的回退
+    分支里，于是文档宣称的故障转移实际从未发生过。
+    """
+
+    def test_all_three_configured(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real"},
+            "zhipu": {"enabled": True, "api_key": "zhipu-key-real"},
+            "siliconflow": {"enabled": True, "api_key": "sk-silicon-real"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert [p.name for p in cfg.providers] == ["deepseek", "zhipu", "siliconflow"]
+        # 真实端点与真实模型 id
+        assert cfg.providers[1].base_url == "https://open.bigmodel.cn/api/paas/v4"
+        assert all("v4-pro" not in p.model for p in cfg.providers)
+
+    def test_disabled_provider_is_skipped(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real"},
+            "zhipu": {"enabled": False, "api_key": "zhipu-key-real"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert [p.name for p in cfg.providers] == ["deepseek"]
+
+    def test_missing_key_is_skipped(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "${NOT_SET_ANYWHERE_XYZ}"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert cfg.providers == []
+
+    def test_placeholder_key_is_not_treated_as_configured(self, tmp_path):
+        """`sk-xxxxx` 这类占位符不能算「已配置」—— 否则会拿它去请求然后吃 401。"""
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-xxxxxxxxxxxxxxxx"},
+            "zhipu": {"enabled": True, "api_key": "your-api-key-here"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert cfg.providers == []
+
+    def test_priority_defaults_order_the_failover(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real"},
+            "zhipu": {"enabled": True, "api_key": "zhipu-key-real"},
+            "siliconflow": {"enabled": True, "api_key": "sk-silicon-real"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert [p.priority for p in cfg.providers] == [0, 1, 2]
+
+    def test_explicit_model_override(self, tmp_path):
+        path = _write_yaml(tmp_path, {
+            "deepseek": {"enabled": True, "api_key": "sk-deepseek-real",
+                         "model": "deepseek-reasoner"},
+        })
+        cfg = AgentConfig.from_config_file(path)
+        assert cfg.providers[0].model == "deepseek-reasoner"
+        assert cfg.providers[0].base_url == "https://api.deepseek.com/v1"
 
     def test_disabled_provider_skipped(self, tmp_path):
         """Providers with enabled=false should be skipped."""
@@ -211,9 +278,7 @@ class TestFromConfigFile:
             assert isinstance(cfg.skill_dirs, list)
 
 
-# ================================================================
-#  DEFAULT_SYSTEM_PROMPT
-# ================================================================
+# ---- DEFAULT_SYSTEM_PROMPT ----
 
 class TestDefaultSystemPrompt:
     """DEFAULT_SYSTEM_PROMPT sanity checks."""
@@ -233,3 +298,43 @@ class TestDefaultSystemPrompt:
         # Must contain key safety rules
         assert "NEVER" in prompt
         assert ".env" in prompt or "API credentials" in prompt
+
+
+# ---- 向量库默认值 ----
+# 这几条锁的是「默认进程内」这个决定必须落在**代码**里而不是只写在配置文件里：
+# pc_agent/config.yaml 被 .gitignore 忽略且仓库无模板，新克隆可能根本没有该文件。
+# 只改配置的话，「默认 local」不会真正生效，用户会静默退化成纯关键词检索。
+
+def _write_cfg(tmp_path, kb_section):
+    import yaml
+    config = {
+        "llm": {"deepseek": {"api_key": "${DEEPSEEK_API_KEY}", "model": "deepseek-chat"}},
+        "mcp_servers": [],
+        "skills": {"enabled": False},
+    }
+    if kb_section is not None:
+        config["knowledge_base"] = kb_section
+    path = tmp_path / "cfg.yaml"
+    with path.open("w", encoding="utf-8") as f:
+        yaml.dump(config, f)
+    return str(path)
+
+
+class TestVectorDbDefault:
+    def test_missing_knowledge_base_section_defaults_to_local(self, tmp_path):
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+            cfg = AgentConfig.from_config_file(_write_cfg(tmp_path, None))
+        assert cfg.knowledge_base_vector_db == {"provider": "local"}
+
+    def test_missing_vector_db_key_defaults_to_local(self, tmp_path):
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+            cfg = AgentConfig.from_config_file(_write_cfg(tmp_path, {"enabled": True}))
+        assert cfg.knowledge_base_vector_db == {"provider": "local"}
+
+    def test_explicit_config_wins(self, tmp_path):
+        """想切回 Milvus 时，显式配置必须盖过默认值。"""
+        section = {"enabled": True, "vector_db": {"provider": "milvus", "fallback": "qdrant"}}
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+            cfg = AgentConfig.from_config_file(_write_cfg(tmp_path, section))
+        assert cfg.knowledge_base_vector_db["provider"] == "milvus"
+

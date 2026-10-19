@@ -17,6 +17,7 @@ import ctypes
 import logging
 import os
 import subprocess
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
@@ -25,9 +26,7 @@ from typing import Optional
 
 logger = logging.getLogger("Guardian.Sandbox")
 
-# ================================================================
-#  Constants
-# ================================================================
+# ---- Constants ----
 
 # Whitelist — only these executables (and their arguments) are allowed
 SAFE_COMMANDS: dict[str, list[str]] = {
@@ -82,15 +81,11 @@ DEFAULT_MAX_TIME_SEC = 30
 DEFAULT_MAX_MEMORY_MB = 64
 DEFAULT_MAX_OUTPUT_BYTES = 16384  # 16KB
 
-# Allowed write paths (everything else is read-only)
-ALLOWED_WRITE_PATHS = [
-    r"C:\Users\24522\AppData\Local\Temp",
-    os.environ.get("TEMP", r"C:\Windows\Temp"),
-]
+# 这里曾有一个 ALLOWED_WRITE_PATHS，声称「其余路径只读」的文件系统守卫。
+# 实测全项目零引用 —— 守卫根本不存在，只是让人以为有。而且它还写死了开发者的
+# 个人路径（C:\Users\<名字>\AppData\...）。已删除，README 里如实标注为未实现。
 
-# ================================================================
-#  Windows Job Object (via ctypes)
-# ================================================================
+# ---- Windows Job Object (via ctypes) ----
 
 # Windows API constants
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
@@ -105,17 +100,6 @@ JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
 
 JobObjectExtendedLimitInformation = 9
 JobObjectBasicUIRestrictions = 4
-
-class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
-    _fields_ = [
-        ("BasicLimitInformation", ctypes.c_uint64 * 8),
-        ("IoInfo", ctypes.c_uint64 * 2),
-        ("ProcessMemoryLimit", ctypes.c_size_t),
-        ("JobMemoryLimit", ctypes.c_size_t),
-        ("PeakProcessMemoryUsed", ctypes.c_size_t),
-        ("PeakJobMemoryUsed", ctypes.c_size_t),
-    ]
-
 
 class IO_COUNTERS(ctypes.Structure):
     _fields_ = [
@@ -142,32 +126,64 @@ class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
     ]
 
 
-def create_job_object(name: str = None) -> ctypes.c_void_p:
-    """Create a Windows Job Object with kill-on-close behavior."""
+class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+    """必须与 Win32 的布局**逐字节**一致，否则 SetInformationJobObject 直接
+    返回 ERROR_BAD_LENGTH(24)。
+
+    这里曾经把 IoInfo 写成 `ctypes.c_uint64 * 2`（16 字节），而真正的
+    IO_COUNTERS 是 48 字节 —— sizeof 变成 112 而非 144，于是 create_job_object
+    在任何机器上都不可能成功（自审计里那句 "Job Object 需提权才能验证" 其实
+    是误诊：根本不是权限问题，是结构体写错了）。
+    IO_COUNTERS 类当时就定义在下方，只是没人用。
+    """
+
+    _fields_ = [
+        ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+        ("IoInfo", IO_COUNTERS),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
+def create_job_object(name: str = None,
+                      memory_mb: int = DEFAULT_MAX_MEMORY_MB) -> ctypes.c_void_p:
+    """建一个 Job Object 并施加限制。
+
+    最有价值的一条是 KILL_ON_JOB_CLOSE：句柄一关（**包括守护进程自己崩溃**），
+    作业内所有进程都会被内核杀掉，不会留下孤儿诊断进程。
+
+    刻意**不**设置 ActiveProcessLimit=1。原实现设了，但白名单里的 wmic / schtasks
+    这类命令会派生辅助进程，限死 1 个会把它们弄坏；而 KILL_ON_JOB_CLOSE 本来就能
+    保证派生出来的子进程随作业一起消亡，不需要再叠这一层。
+    """
     job_name = name or f"GuardianSandbox_{uuid.uuid4().hex[:8]}"
 
     kernel32 = ctypes.windll.kernel32
+    # HANDLE 在 64 位上是 64 位的；不声明 restype 的话 ctypes 按 c_int 处理，
+    # 高位非零时会被静默截断成一个无效句柄。
+    kernel32.CreateJobObjectW.restype = ctypes.c_void_p
+    kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+    kernel32.SetInformationJobObject.argtypes = [
+        ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32,
+    ]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+
     job = kernel32.CreateJobObjectW(None, job_name)
     if not job:
         err = kernel32.GetLastError()
         raise OSError(f"CreateJobObject failed: {err}")
 
-    # Configure limits
     info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-    info.BasicLimitInformation = (ctypes.c_uint64 * 8)()
-    info.IoInfo = (ctypes.c_uint64 * 2)()
-
-    # Set limits
     flags = (
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |
-        JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION |
-        JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+        JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
     )
-
-    basic = JOBOBJECT_BASIC_LIMIT_INFORMATION()
-    basic.LimitFlags = flags
-    basic.ActiveProcessLimit = 1  # Only 1 process allowed
-    info.BasicLimitInformation = (ctypes.c_uint64 * 8).from_buffer_copy(basic)
+    if memory_mb and memory_mb > 0:
+        info.ProcessMemoryLimit = memory_mb * 1024 * 1024
+        flags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY
+    info.BasicLimitInformation.LimitFlags = flags
 
     result = kernel32.SetInformationJobObject(
         job,
@@ -180,8 +196,46 @@ def create_job_object(name: str = None) -> ctypes.c_void_p:
         kernel32.CloseHandle(job)
         raise OSError(f"SetInformationJobObject failed: {err}")
 
+    # 桌面隔离：限制作业内进程访问窗口站/桌面/剪贴板等 USER 对象。
+    # 对白名单里的控制台命令无影响（实测 ipconfig / netstat / whoami 输出完全一致），
+    # 失败也不阻断 —— 限制本身是加固，不是必需条件。
+    try:
+        set_job_ui_restrictions(job)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Job Object 桌面限制未生效: %s", e)
+
     logger.debug(f"Job object created: {job_name}")
     return ctypes.c_void_p(job)
+
+
+def _kill_process_tree(pid: int) -> None:
+    """杀掉整棵进程树（尽力而为，失败不影响后续兜底）。
+
+    为什么需要它：`Popen.kill()` 只终止**直接子进程**。`shell=True` 时直接子进程是
+    `cmd.exe`，真正干活的命令是它的子进程 —— 杀掉 cmd.exe 之后孙进程还活着，
+    而且可能继续攥着 stdout 管道，导致后续 `communicate()` 永远等不到 EOF。
+
+    实测证据：一条 `tasklist /v` 配 15s 超时，`pc_agent/sandbox_audit.log` 里记的是
+    `duration_ms: 625074.9` —— 快了 40 倍才回来。
+    """
+    if not pid:
+        return
+    try:
+        if sys.platform == "win32":
+            # /T = 连同子进程树，/F = 强制
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True, timeout=5,
+            )
+        else:
+            import signal as _signal
+
+            try:
+                os.killpg(os.getpgid(pid), _signal.SIGKILL)
+            except Exception:  # noqa: BLE001 - 不是进程组首领时退回单进程
+                os.kill(pid, _signal.SIGKILL)
+    except Exception as e:  # noqa: BLE001 - 尽力而为，调用方还有 Job Object 兜底
+        logger.debug("杀掉进程树失败 (pid=%s): %s", pid, e)
 
 
 def assign_process_to_job(job_handle: ctypes.c_void_p, process_handle: int):
@@ -201,28 +255,6 @@ def close_job_handle(job_handle: ctypes.c_void_p):
     logger.debug("Job object closed — all sandboxed processes terminated")
 
 
-def set_job_memory_limit(job_handle: ctypes.c_void_p, max_mb: int):
-    """Set per-process memory limit on a job object."""
-    kernel32 = ctypes.windll.kernel32
-    info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
-    info.ProcessMemoryLimit = max_mb * 1024 * 1024
-    # Read current limits first
-    kernel32.QueryInformationJobObject(
-        job_handle, JobObjectExtendedLimitInformation,
-        ctypes.byref(info), ctypes.sizeof(info), None,
-    )
-    # Add memory limit flag
-    basic = JOBOBJECT_BASIC_LIMIT_INFORMATION.from_buffer_copy(
-        info.BasicLimitInformation)
-    basic.LimitFlags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY
-    info.BasicLimitInformation = (ctypes.c_uint64 * 8).from_buffer_copy(basic)
-
-    kernel32.SetInformationJobObject(
-        job_handle, JobObjectExtendedLimitInformation,
-        ctypes.byref(info), ctypes.sizeof(info),
-    )
-
-
 def set_job_ui_restrictions(job_handle: ctypes.c_void_p):
     """Prevent sandboxed process from interacting with desktop."""
     kernel32 = ctypes.windll.kernel32
@@ -240,9 +272,7 @@ def set_job_ui_restrictions(job_handle: ctypes.c_void_p):
     )
 
 
-# ================================================================
-#  Command Validation
-# ================================================================
+# ---- Command Validation ----
 
 class CommandValidator:
     """Validate commands against whitelist and blocklist."""
@@ -283,9 +313,7 @@ class CommandValidator:
         return sorted(SAFE_COMMANDS.keys())
 
 
-# ================================================================
-#  Audit Logger
-# ================================================================
+# ---- Audit Logger ----
 
 class AuditLogger:
     """Write an audit trail of all sandboxed executions."""
@@ -317,9 +345,7 @@ class AuditLogger:
             logger.warning(f"Audit log write failed: {e}")
 
 
-# ================================================================
-#  Sandbox Executor
-# ================================================================
+# ---- Sandbox Executor ----
 
 class SandboxExecutor:
     """Execute commands in a multi-layer sandbox."""
@@ -361,8 +387,16 @@ class SandboxExecutor:
         stdout_data = ""
         stderr_data = ""
 
+        # Layer 2: Job Object —— 进程树围栏 + 内存上限。
+        #
+        # 尽力而为，失败不阻断执行：如果本进程已经身处另一个不允许 breakaway 的
+        # 作业里（IDE 内置终端、Windows Terminal、CI 都很常见），
+        # AssignProcessToJobObject 会失败。那种情况下降级为「无作业围栏」并记
+        # warning —— 否则沙箱会在大量正常环境里直接不可用。
+        job = self._create_job_safely()
+
         try:
-            # Layer 2: Spawn with isolation flags
+            # Layer 3: Spawn with isolation flags
             # CREATE_NO_WINDOW — no console window
             # CREATE_NEW_PROCESS_GROUP — no Ctrl+C propagation
             # BELOW_NORMAL_PRIORITY_CLASS — don't starve the system
@@ -382,6 +416,11 @@ class SandboxExecutor:
                     errors="replace",
                 )
                 pid = proc.pid
+                # 放进作业：进程树随作业句柄一起消亡，并且受 ProcessMemoryLimit 约束
+                if job is not None:
+                    handle = getattr(proc, "_handle", None)
+                    if handle:
+                        assign_process_to_job(job, handle)
             except OSError as e:
                 self.audit.record(exec_id, command, False, "OS error: " + str(e))
                 return {
@@ -396,12 +435,36 @@ class SandboxExecutor:
                 exit_code = proc.returncode
             except subprocess.TimeoutExpired:
                 killed = True
-                # Force kill — TerminateProcess, no escape
-                proc.kill()
+
+                # 必须杀**整棵进程树**。`Popen.kill()` 在 Windows 上只终止直接子进程
+                # （shell=True 时是 cmd.exe），孙进程会活下来；如果它攥着 stdout 管道，
+                # 下面那次 communicate() 就永远等不到 EOF。
+                # 实测证据：一条 `tasklist /v` 配 15s 超时，审计日志里记了 **625 秒**。
+                _kill_process_tree(pid)
+
+                # Job Object 兜底：关句柄会连带杀掉作业内所有进程（KILL_ON_JOB_CLOSE）
+                if job is not None:
+                    try:
+                        close_job_handle(job)
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug("关闭 Job Object 失败: %s", e)
+                    job = None   # 已经关了，finally 不再重复关
+
                 try:
-                    stdout_data, stderr_data = proc.communicate(timeout=3)
-                except Exception:
-                    pass
+                    stdout_data, stderr_data = proc.communicate(timeout=5)
+                except Exception as e:  # noqa: BLE001 - 兜底：超时路径不能再挂住
+                    logger.debug("超时后回收输出失败(%s)，放弃残留输出", e)
+                    stdout_data, stderr_data = "", ""
+                    for stream in (proc.stdout, proc.stderr):
+                        try:
+                            if stream:
+                                stream.close()
+                        except Exception:  # noqa: BLE001
+                            pass
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:  # noqa: BLE001
+                        pass
                 exit_code = -1
 
             duration_ms = (time.time() - t0) * 1000
@@ -446,15 +509,32 @@ class SandboxExecutor:
                 "duration_ms": round(duration_ms, 1),
             }
 
+        finally:
+            # 关句柄会连带杀掉作业内所有进程（KILL_ON_JOB_CLOSE）。
+            # 这正是想要的：无论上面走的是哪条返回路径，都不留孤儿进程。
+            if job is not None:
+                try:
+                    close_job_handle(job)
+                except Exception as e:  # noqa: BLE001
+                    logger.debug("Job Object 关闭失败: %s", e)
+
+    def _create_job_safely(self):
+        """建作业对象；任何失败都降级为 None（无围栏），不阻断执行。"""
+        if sys.platform != "win32":
+            return None
+        try:
+            return create_job_object(memory_mb=self.max_memory_mb)
+        except Exception as e:  # noqa: BLE001 - 降级是刻意的
+            logger.warning("Job Object 创建失败，本次执行无作业围栏: %s", e)
+            return None
+
     def quick_check(self, command: str) -> dict:
         """Check if a command would be allowed, without executing."""
         allowed, reason = self.validator.validate(command)
         return {"allowed": allowed, "reason": reason}
 
 
-# ================================================================
-#  Singleton
-# ================================================================
+# ---- Singleton ----
 
 _default_sandbox: Optional[SandboxExecutor] = None
 
@@ -464,3 +544,4 @@ def get_sandbox() -> SandboxExecutor:
     if _default_sandbox is None:
         _default_sandbox = SandboxExecutor()
     return _default_sandbox
+

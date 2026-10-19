@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-============================================================
- AI 网络安全管家 - PC Agent 主程序
- AI Network Security Guardian - Main Entry Point
-============================================================
+AI 网络安全管家 - PC Agent 主程序
+AI Network Security Guardian - Main Entry Point
 
-启动后会自动:
+启动后自动:
  1. 监控 Windows 安全状态
  2. 检测网络威胁
  3. 扫描可疑进程
@@ -19,48 +17,93 @@ import signal
 import sys
 import threading
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import yaml
-from ai_status import AIStatusTracker
-from character_manager import CharacterManager
-from device_bridge import DeviceBridge
-from firewall_checker import FirewallChecker
-from llm_client import MultiLLMClient, Provider
-from network_monitor import NetworkMonitor
-from process_monitor import ProcessMonitor
-from security_monitor import SecurityMonitor
+
+# 同目录模块要同时支持两种运行方式：
+#   * 当脚本:  python pc_agent/main.py          -> __package__ 为空，走扁平导入
+#   * 当包:    poetry 的 guardian-pc 入口         -> __package__ == "pc_agent"，走相对导入
+#
+# 以前只有扁平导入，于是 `import pc_agent.main` 直接 ModuleNotFoundError:
+# No module named 'ai_status'，pyproject 里声明的 guardian-pc 入口根本不可用。
+# 不能靠往 sys.path 里塞 pc_agent/ 来统一 —— 那样 `ai_status` 与
+# `pc_agent.ai_status` 会成为两个不同的模块对象，跨模块 isinstance 会莫名失败。
+if __package__:
+    from .ai_status import AIStatusTracker
+    from .character_manager import CharacterManager
+    from .device_bridge import DeviceBridge
+    from .firewall_checker import FirewallChecker
+    from .llm_client import MultiLLMClient, Provider
+    from .network_monitor import NetworkMonitor
+    from .process_monitor import ProcessMonitor
+    from .security_monitor import SecurityMonitor
+else:
+    from ai_status import AIStatusTracker
+    from character_manager import CharacterManager
+    from device_bridge import DeviceBridge
+    from firewall_checker import FirewallChecker
+    from llm_client import MultiLLMClient, Provider
+    from network_monitor import NetworkMonitor
+    from process_monitor import ProcessMonitor
+    from security_monitor import SecurityMonitor
 
 # agent/llm.py 集成
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from agent.config import AgentConfig
+from agent.config import AgentConfig  # noqa: E402
 
 # 可选模块
 try:
-    from system_tray import SystemTrayApp
+    if __package__:
+        from .system_tray import SystemTrayApp
+    else:
+        from system_tray import SystemTrayApp
     HAS_TRAY = True
 except ImportError:
     HAS_TRAY = False
 
 try:
-    from desktop_gui import HAS_PYQT5, run_gui
+    if __package__:
+        from .desktop_gui import HAS_PYQT5, run_gui
+    else:
+        from desktop_gui import HAS_PYQT5, run_gui
     HAS_GUI = HAS_PYQT5
 except ImportError:
     HAS_GUI = False
 
-# ==================== 日志 ====================
-
+# 日志
 def setup_logging(config: dict):
-    """配置日志系统"""
+    """配置日志系统。
+
+    修掉的两个问题：
+      1. `logging.file` 原先是**相对路径**，落点取决于从哪个目录启动 ——
+         所以磁盘上会同时出现 `./guardian.log` 和 `pc_agent/guardian.log`。
+         现在锚定到项目根。
+      2. `max_size_mb` / `backup_count` 写在 config.yaml 里，但原实现用的是
+         不会轮转的 `FileHandler`，**这两个配置项完全没有被使用** ——
+         日志会无限增长。现在改用 `RotatingFileHandler`。
+
+    另外把日志级别的解析做稳：yaml 里写了非法值（比如 `level: verbose`）时
+    原实现会 `getattr(logging, 'verbose')` 抛 AttributeError，现在退回 INFO。
+    """
     try:
         import colorlog
         _has_colorlog = True
     except ImportError:
         _has_colorlog = False
 
-    log_config = config.get('logging', {})
-    level = getattr(logging, log_config.get('level', 'INFO'))
-    log_file = log_config.get('file', 'guardian.log')
+    log_config = config.get('logging', {}) or {}
+    level = getattr(logging, str(log_config.get('level', 'INFO')).upper(), logging.INFO)
+
+    # 绝对路径：`Path(root) / 绝对路径` 在 pathlib 里会保留右边，所以用户配绝对路径也不受影响
+    log_file = str(Path(__file__).parent.parent / log_config.get('file', 'guardian.log'))
+    max_bytes = int(log_config.get('max_size_mb', 10)) * 1024 * 1024
+    backup_count = int(log_config.get('backup_count', 3))
+    try:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+    except Exception:  # noqa: BLE001 - 建目录失败就让 FileHandler 去报错
+        pass
 
     # 控制台 handler (彩色)
     if _has_colorlog:
@@ -83,8 +126,9 @@ def setup_logging(config: dict):
             datefmt='%H:%M:%S',
         ))
 
-    # 文件 handler
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    # 文件 handler —— 轮转由 max_size_mb / backup_count 控制（原来这两个配置是哑的）
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
     file_handler.setFormatter(logging.Formatter(
         '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
     ))
@@ -97,8 +141,7 @@ def setup_logging(config: dict):
     return logging.getLogger('Guardian')
 
 
-# ==================== 主控制器 ====================
-
+# 主控制器
 class GuardianController:
     """安全管家主控制器"""
 
@@ -178,10 +221,20 @@ class GuardianController:
 
         if agent_cfg and agent_cfg.providers:
             # 从 AgentConfig 直接注入已配置的 providers
-            from llm_client import LLMConfig as LLCfg
+            if __package__:
+                from .llm_client import LLMConfig as LLCfg
+            else:
+                from llm_client import LLMConfig as LLCfg
+
+            # 保留供应商身份，而不是一律标成 CUSTOM —— 界面上要显示用的哪家
+            by_name = {
+                "deepseek": Provider.DEEPSEEK,
+                "zhipu": Provider.ZHIPU,
+                "siliconflow": Provider.SILICONFLOW,
+            }
             for p in agent_cfg.providers:
                 client.add_provider(LLCfg(
-                    provider=Provider.CUSTOM,
+                    provider=by_name.get(p.name, Provider.CUSTOM),
                     api_key=p.api_key,
                     model=p.model,
                     base_url=p.base_url,
@@ -231,9 +284,7 @@ class GuardianController:
         self.logger.info("=" * 50)
         self.running = True
 
-        # ================================================================
-        #  启动前自审计 — 先保证自己没被篡改，再保护别人
-        # ================================================================
+        # ---- 启动前自审计 — 先保证自己没被篡改，再保护别人 ----
         self._run_startup_integrity_check()
 
         # 连接设备
@@ -274,7 +325,7 @@ class GuardianController:
         t.start()
         return t
 
-    # ==================== 扫描循环 ====================
+    # 扫描循环
 
     def _scan_loop(self):
         """主扫描循环"""
@@ -307,6 +358,13 @@ class GuardianController:
                     threats.append(f"⚠️ 检测到 {suspicious_procs} 个可疑进程: {', '.join(proc_names[:3])}")
                     messages.append(f"可疑进程: {', '.join(proc_names[:3])}")
 
+                # 高内存进程（ProcessMonitor.mem_threshold 此前是个哑配置）
+                high_mem = proc_result.get('high_mem_count', 0)
+                if high_mem > 0:
+                    mem_names = [d['name'] for d in
+                                 proc_result.get('high_mem_details', [])[:3]]
+                    messages.append(f"高内存进程 {high_mem} 个: {', '.join(mem_names)}")
+
                 # 3. 防火墙检查 (每30秒)
                 fw_result = self.firewall.check()
                 firewall_on = fw_result.get('firewall_on', True)
@@ -319,7 +377,29 @@ class GuardianController:
                     threats.append("🔴 Windows Defender 已关闭!")
                     messages.append("警告: 杀毒软件未运行")
 
-                # 4. 系统资源
+                # 4. Windows 安全事件日志 (EventLog)
+                #
+                # SecurityMonitor 此前一直在 __init__ 里被实例化却**从不调用** ——
+                # 这一段是它第一次真正进入主链路。读事件日志比其它检查重得多，
+                # 不能跟着 5s 的主循环跑，因此单独节流到 60s 一次。
+                now_ts = time.time()
+                if now_ts - getattr(self, '_last_sec_log_check', 0) >= 60:
+                    self._last_sec_log_check = now_ts
+                    try:
+                        sec = self.security.get_summary()
+                    except Exception as e:
+                        self.logger.debug(f"安全事件读取跳过: {e}")
+                        sec = {}
+                    failed_logins = sec.get('failed_logins', 0)
+                    new_users = sec.get('new_users', 0)
+                    if failed_logins > 0:
+                        messages.append(f"安全日志: 登录失败 {failed_logins} 次")
+                    if failed_logins > 5:
+                        threats.append(f"🚨 大量登录失败 ({failed_logins} 次)")
+                    if new_users > 0:
+                        threats.append(f"🚨 检测到新增用户账户 ({new_users} 个)")
+
+                # 5. 系统资源
                 import psutil
                 cpu_percent = psutil.cpu_percent(interval=1)
                 mem_percent = psutil.virtual_memory().percent
@@ -512,8 +592,7 @@ class GuardianController:
             return []
 
 
-# ==================== 入口 ====================
-
+# 入口
 def check_admin_privileges(logger):
     """检查是否以管理员权限运行"""
     import ctypes
@@ -534,6 +613,36 @@ def check_admin_privileges(logger):
         logger.warning("")
         logger.warning("💡 右键启动程序 → \"以管理员身份运行\" 获取完整功能")
         logger.warning("=" * 50)
+
+
+def startup_lockdown_check(config: dict) -> list:
+    """启动熔断：配置开启时，自检发现 CRITICAL 问题就拒绝启动。
+
+    返回致命问题列表；空列表 = 可以继续启动。
+
+    默认**关闭**（`agent.lockdown_on_critical`）。不开的时候直接返回，不会额外
+    跑一次自检 —— 常规告警由 `_run_startup_integrity_check` 负责，那条路径
+    只提示、不阻止启动（用户可能正在调试）。
+
+    「熔断」这个词以前只出现在 README 里，代码里没有任何实现。现在是真实的了。
+    """
+    try:
+        if not (config.get('agent') or {}).get('lockdown_on_critical', False):
+            return []
+    except AttributeError:
+        return []
+
+    try:
+        from agent.self_audit import SelfAuditor
+    except ImportError:
+        return []
+
+    try:
+        result = SelfAuditor().quick_check()
+    except Exception:
+        return []   # 自检本身跑不起来，不该成为拒绝启动的理由
+
+    return [i for i in result.get("issues", []) if i.get("severity") == "CRITICAL"]
 
 
 def main():
@@ -564,6 +673,20 @@ def main():
     # 管理员权限检查
     check_admin_privileges(controller.logger)
 
+    # 启动熔断（opt-in）：开了 agent.lockdown_on_critical 就在这里挡住
+    fatal = startup_lockdown_check(controller.config)
+    if fatal:
+        print()
+        print("  \033[31m🚫 启动已中止：自检发现严重问题，且已开启熔断\033[0m")
+        for issue in fatal[:8]:
+            print(f"     🔴 {issue.get('issue') or issue.get('file') or issue}")
+        print()
+        print("     确认无误后：把配置里的 agent.lockdown_on_critical 改回 false；")
+        print("     若只是改过代码导致基线过期，运行 python generate_integrity_manifest.py")
+        print("     重建基线即可。")
+        print()
+        sys.exit(2)
+
     # GUI 模式 — 统一单体应用，关闭 pystray
     if args.gui:
         if not HAS_GUI:
@@ -590,3 +713,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+

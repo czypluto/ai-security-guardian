@@ -114,9 +114,17 @@ class TestStatusCalculation:
     def setup_method(self):
         self.nm = NetworkMonitor({}, MagicMock())
 
-    def test_no_threats_normal(self):
-        # Mock scan 结果
-        assert self.nm.scan.__wrapped__ if hasattr(self.nm.scan, '__wrapped__') else True
+    @patch('psutil.net_connections')
+    def test_no_threats_normal(self, mock_conns, mock_logger):
+        """无任何连接 → normal 且无可疑"""
+        mock_conns.return_value = []
+        self.nm.logger = mock_logger
+
+        result = self.nm.scan()
+
+        assert result['status'] == 'normal'
+        assert result['active_connections'] == 0
+        assert result['suspicious_ips'] == 0
 
     @patch('psutil.net_connections')
     def test_status_under_attack(self, mock_conns, mock_logger):

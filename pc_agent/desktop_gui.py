@@ -1,6 +1,6 @@
 """
 AI 网络安全管家 - 桌面 GUI 应用
-极简清爽风格 · 暗色主题 · 实时监控仪表盘 · 系统托盘后台运行
+暗色主题，实时监控仪表盘，支持系统托盘后台运行
 """
 
 import logging
@@ -54,9 +54,7 @@ except ImportError:
     Qt = type('Qt', (), {})()
 
 
-# ============================================================
-# 颜色常量 — 极简清爽调色板
-# ============================================================
+# 颜色常量
 COLORS = {
     'bg_primary':     '#0d0f12',   # 主背景 - 极深柔黑
     'bg_card':        '#15181d',   # 卡片背景 - 柔深灰
@@ -75,9 +73,7 @@ COLORS = {
     'white':          '#ffffff',
 }
 
-# ============================================================
-# QSS 极简清爽主题
-# ============================================================
+# QSS 主题
 DARK_THEME_QSS = """
 QMainWindow, QWidget#centralWidget, QScrollArea,
 QScrollArea > QWidget > QWidget {
@@ -223,11 +219,9 @@ QToolTip {
 """
 
 
-# ============================================================
 # 图标生成 (QPainter)
-# ============================================================
 def create_shield_icon(color_hex: str, size: int = 64) -> QIcon:
-    """用 QPainter 绘制极简盾牌图标"""
+    """用 QPainter 绘制盾牌图标"""
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.transparent)
 
@@ -265,11 +259,9 @@ def create_shield_icon(color_hex: str, size: int = 64) -> QIcon:
     return QIcon(pixmap)
 
 
-# ============================================================
-# StatusCard — 极简指标卡片
-# ============================================================
+# StatusCard — 指标卡片
 class StatusCard(QFrame):
-    """极简卡片: 图标行 + 大数值 + 小标签，左对齐排版"""
+    """指标卡片: 图标行 + 大数值 + 小标签，左对齐排版"""
 
     def __init__(self, icon_text: str, value_text: str, label_text: str,
                  value_color: str = COLORS['text_primary'], parent=None):
@@ -296,7 +288,6 @@ class StatusCard(QFrame):
         top_row.addStretch()
         layout.addLayout(top_row)
 
-        # 大数值
         self._value = QLabel(value_text)
         self._value.setObjectName('cardValue')
         self._value.setStyleSheet(f"color: {value_color};")
@@ -319,9 +310,7 @@ class StatusCard(QFrame):
         self._icon.setText(text)
 
 
-# ============================================================
-# GaugeCard — 极简资源进度卡片
-# ============================================================
+# GaugeCard — 资源进度卡片
 class GaugeCard(QFrame):
     """带细进度条的系统资源卡片"""
 
@@ -334,7 +323,6 @@ class GaugeCard(QFrame):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(8)
 
-        # 顶部行
         top_row = QHBoxLayout()
         top_row.setSpacing(8)
 
@@ -348,7 +336,6 @@ class GaugeCard(QFrame):
         top_row.addStretch()
         layout.addLayout(top_row)
 
-        # 数值行 + 进度条
         self._percent = QLabel('0%')
         self._percent.setObjectName('cardValue')
         self._percent.setStyleSheet(f"color: {COLORS['text_primary']};")
@@ -395,9 +382,7 @@ class GaugeCard(QFrame):
         self._percent.setStyleSheet(f"color: {c};")
 
 
-# ============================================================
 # Divider — 极细分隔线
-# ============================================================
 class Divider(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -405,11 +390,9 @@ class Divider(QFrame):
         self.setStyleSheet(f"background-color: {COLORS['border']};")
 
 
-# ============================================================
 # DesktopGUI — 主窗口
-# ============================================================
 class DesktopGUI(QMainWindow):
-    """AI 网络安全管家桌面主窗口 — 极简清爽版"""
+    """AI 网络安全管家桌面主窗口"""
 
     def __init__(self, controller, logger: logging.Logger = None):
         super().__init__()
@@ -424,7 +407,7 @@ class DesktopGUI(QMainWindow):
         self._setup_tray()
         self._setup_timers()
 
-    # ---- UI 构建 ----
+    # UI 构建
     def _build_ui(self):
         self.setWindowTitle('AI 网络安全管家')
         self.setMinimumSize(920, 640)
@@ -442,7 +425,7 @@ class DesktopGUI(QMainWindow):
         main_layout.setContentsMargins(32, 24, 32, 24)
         main_layout.setSpacing(0)
 
-        # ======== 顶部标题区 ========
+        # 顶部标题区
         header_layout = QVBoxLayout()
         header_layout.setSpacing(4)
 
@@ -475,7 +458,7 @@ class DesktopGUI(QMainWindow):
         main_layout.addWidget(Divider())
         main_layout.addSpacing(20)
 
-        # ======== 控制栏 ========
+        # 控制栏
         ctrl_bar = QHBoxLayout()
         ctrl_bar.setSpacing(10)
 
@@ -500,7 +483,7 @@ class DesktopGUI(QMainWindow):
         main_layout.addLayout(ctrl_bar)
         main_layout.addSpacing(24)
 
-        # ======== 第一行: 核心安全指标 ========
+        # 第一行: 核心安全指标
         sec_title = QLabel('安全概览')
         sec_title.setObjectName('sectionTitle')
         main_layout.addWidget(sec_title)
@@ -517,7 +500,7 @@ class DesktopGUI(QMainWindow):
         main_layout.addLayout(row1)
         main_layout.addSpacing(24)
 
-        # ======== 第二行: 系统防护 + 资源 ========
+        # 第二行: 系统防护 + 资源
         sys_title = QLabel('系统与资源')
         sys_title.setObjectName('sectionTitle')
         main_layout.addWidget(sys_title)
@@ -534,7 +517,7 @@ class DesktopGUI(QMainWindow):
         main_layout.addLayout(row2)
         main_layout.addSpacing(24)
 
-        # ======== 威胁消息区 ========
+        # 威胁消息区
         threat_title = QLabel('威胁与事件')
         threat_title.setObjectName('sectionTitle')
         main_layout.addWidget(threat_title)
@@ -546,7 +529,7 @@ class DesktopGUI(QMainWindow):
         main_layout.addWidget(self._threat_list)
         main_layout.addSpacing(24)
 
-        # ======== 底部状态栏 ========
+        # 底部状态栏
         main_layout.addWidget(Divider())
         main_layout.addSpacing(12)
 
@@ -569,7 +552,7 @@ class DesktopGUI(QMainWindow):
         self.setCentralWidget(scroll)
 
     def _make_btn(self, text: str, primary: bool = False) -> QPushButton:
-        """创建极简按钮"""
+        """创建按钮"""
         btn = QPushButton(text)
         if primary:
             btn.setStyleSheet(f"""
@@ -606,7 +589,7 @@ class DesktopGUI(QMainWindow):
             """)
         return btn
 
-    # ---- 系统托盘 ----
+    # 系统托盘
     def _setup_tray(self):
         self._tray = QSystemTrayIcon(self)
         self._tray.setIcon(create_shield_icon(COLORS['safe']))
@@ -646,7 +629,7 @@ class DesktopGUI(QMainWindow):
         self.raise_()
         self.activateWindow()
 
-    # ---- 定时器 ----
+    # 定时器
     def _setup_timers(self):
         self._refresh_timer = QTimer(self)
         self._refresh_timer.timeout.connect(self._refresh_dashboard)
@@ -655,7 +638,7 @@ class DesktopGUI(QMainWindow):
         self._pulse_timer = QTimer(self)
         self._pulse_timer.timeout.connect(self._toggle_pulse)
 
-    # ---- 核心刷新 ----
+    # 核心刷新
     def _refresh_dashboard(self):
         try:
             state = self.controller.get_state()
@@ -767,10 +750,13 @@ class DesktopGUI(QMainWindow):
         self._tray_threats.setText(f'威胁 · {threat_count}')
         self._tray_ai.setText(f'AI · {ai_label}')
 
-    # ---- AI 对话窗口 ----
+    # AI 对话窗口
     def _open_chat_window(self):
         try:
-            from chat_window import ChatWindow
+            if __package__:
+                from .chat_window import ChatWindow
+            else:
+                from chat_window import ChatWindow
         except ImportError:
             self.logger.error("无法导入 AI 对话模块")
             return
@@ -789,7 +775,7 @@ class DesktopGUI(QMainWindow):
         self._chat_window.activateWindow()
         self.logger.info('打开 AI 对话窗口')
 
-    # ---- 设备屏幕切换 ----
+    # 设备屏幕切换
     def _toggle_device_screen(self):
         self._device_screen = 1 - self._device_screen
         try:
@@ -803,14 +789,14 @@ class DesktopGUI(QMainWindow):
         except Exception as e:
             self.logger.debug(f'切换屏幕失败: {e}')
 
-    # ---- 脉冲动画 ----
+    # 脉冲动画
     def _toggle_pulse(self):
         self._pulse_state = not self._pulse_state
         self._sec_card.setProperty('severity', 'danger' if self._pulse_state else 'safe')
         self._sec_card.style().unpolish(self._sec_card)
         self._sec_card.style().polish(self._sec_card)
 
-    # ---- 工具方法 ----
+    # 工具方法
     @staticmethod
     def _format_uptime(seconds: int) -> str:
         if seconds < 60:
@@ -824,7 +810,7 @@ class DesktopGUI(QMainWindow):
             return f'{h}h {m}m'
         return f'{m}m'
 
-    # ---- 窗口事件 ----
+    # 窗口事件
     def closeEvent(self, event):
         event.ignore()
         self.hide()
@@ -856,9 +842,7 @@ class DesktopGUI(QMainWindow):
         QApplication.quit()
 
 
-# ============================================================
 # 入口
-# ============================================================
 def run_gui(controller, logger: logging.Logger = None) -> int:
     app = QApplication(sys.argv)
     app.setStyleSheet(DARK_THEME_QSS)
@@ -873,9 +857,7 @@ def run_gui(controller, logger: logging.Logger = None) -> int:
     return app.exec_()
 
 
-# ============================================================
 # 独立测试 (Mock Controller)
-# ============================================================
 if __name__ == '__main__':
     import random
     import time
@@ -909,3 +891,4 @@ if __name__ == '__main__':
             pass
 
     run_gui(MockController())
+

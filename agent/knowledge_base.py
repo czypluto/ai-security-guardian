@@ -1,174 +1,121 @@
 """
-============================================================
- Knowledge Base — 本地向量知识库
- Local Vector Knowledge Base for AI Security Guardian
+Knowledge Base — 本地知识库 (RAG)
 
- 功能:
-   - 对话保存为 Markdown 文件
-   - 向量化存储 (ChromaDB + 本地 Embedding)
-   - 语义检索历史对话
-   - 为 LLM 构建上下文增强提示
+功能:
+  - 对话保存为 Markdown 文件（**事实源**，索引丢了也能重建）
+  - 向量化存储（默认**进程内**，零依赖；可配置 Milvus / Qdrant）
+  - 语义检索历史对话
+  - 为 LLM 构建上下文增强提示
 
- 架构:
-   knowledge_base/
-   ├── conversations/     # Markdown 对话文件
-   └── chroma/            # ChromaDB 向量数据库
+嵌入:
+  - 本地 WeMM-Embedding-2B，由 scripts/embed_server.py 以 transformers 直载（int8 GPU），
+    暴露 OpenAI 兼容的 /v1/embeddings；按需启停见 agent/embed_service.py
+  - 嵌入服务不可用时**只有关键词路**（没有向量语义召回）。
+    曾经写过一个 TF-IDF 后备类，但它既没实现 `__call__` 也从没被 fit 过、
+    且该分支下向量路根本不进 —— 运行时不可达，已删除。见 _create_embedding_fn。
 
- 依赖:
-   pip install chromadb sentence-transformers
-============================================================
+检索:
+  - 向量路（默认进程内；可切 Milvus / Qdrant）+ 中文 BM25 关键词路，
+    两路 RRF 融合（见 agent/bm25.py）
+
+架构:
+  knowledge_base/
+  ├── conversations/     # Markdown 对话文件 (始终保留)
+  └── vector_meta.json   # 向量库元信息 (集合名/维度/provider)
+
+线程安全: 嵌入服务与向量库均为网络客户端（或进程内），可后台线程安全调用。
+ChromaDB 因 Rust 绑定在后台线程段错误而弃用。
 """
 from __future__ import annotations
 
 import json
 import logging
 import re
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import requests
+
+from .bm25 import Bm25Index, rrf_scores
+
 logger = logging.getLogger("Guardian.KB")
 
-# 加载 .env 环境变量 (用于 HF_ENDPOINT 等)
-def _load_dotenv():
-    import os as _os
-    env_path = _os.path.join(_os.path.dirname(__file__), "..", ".env")
-    env_path = _os.path.normpath(env_path)
-    if not _os.path.exists(env_path):
-        return
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, val = line.partition("=")
-            key, val = key.strip(), val.strip()
-            if key not in _os.environ:
-                _os.environ[key] = val
 
-_load_dotenv()
+# 本地嵌入（OpenAI 兼容 /v1/embeddings）
 
+class HttpEmbeddingFunction:
+    """调用本地嵌入服务（scripts/embed_server.py，WeMM-Embedding-2B）。
 
-# ============================================================
-# 内置轻量 Embedding — 纯 Python TF-IDF 后备
-# 当 sentence-transformers 不可用时自动降级
-# ============================================================
+    HTTP 契约与 OpenAI /v1/embeddings 一致——所以服务端从 vLLM 换成 transformers
+    对这里没有影响，调用方一行都不用改。
 
-class _FallbackEmbedding:
-    """轻量级 TF-IDF 向量化，零依赖后备方案。
-
-    用于 sentence-transformers 未安装的场景。
-    虽然不如深度学习模型精准，但对于关键词匹配型检索足够有效。
+    线程安全：纯 HTTP 请求；超时短，服务不可达时快速失败。
     """
 
-    def __init__(self):
-        self._vocab: Dict[str, int] = {}
-        self._idf: Dict[str, float] = {}
+    def __init__(self, url: str = "http://localhost:8099",
+                 model: str = "WeMM-Embedding-2B", timeout: float = 120.0):
+        self.url = url.rstrip("/")
+        self.model = model
+        self.timeout = timeout
 
-    def _tokenize(self, text: str) -> List[str]:
-        """中英文混合分词 (字符级 bigram)。"""
-        text = text.lower()
-        tokens = []
-        # 提取中文字符作为独立 token
-        chinese = re.findall(r'[一-鿿]+', text)
-        for seg in chinese:
-            tokens.append(seg)
-            # 中文 bigram
-            for i in range(len(seg) - 1):
-                tokens.append(seg[i:i + 2])
-        # 英文/数字单词
-        words = re.findall(r'[a-z0-9]{2,}', text)
-        tokens.extend(words)
-        return tokens
+    def __call__(self, input):
+        # 按需启动：服务不在则拉起并等待就绪（模型加载实测约 20s）
+        from .embed_service import get_embed_manager
+        mgr = get_embed_manager(url=self.url)
+        if not mgr.ensure_running():
+            raise RuntimeError("嵌入服务未就绪，本次嵌入跳过")
 
-    def fit(self, documents: List[str]):
-        """构建 IDF 词汇表。"""
-        df: Dict[str, int] = {}
-        for doc in documents:
-            seen = set(self._tokenize(doc))
-            for token in seen:
-                df[token] = df.get(token, 0) + 1
-
-        n = len(documents) or 1
-        self._vocab = {token: i for i, token in enumerate(sorted(df.keys()))}
-        self._idf = {token: __import__('math').log(n / (df[token] + 1)) + 1
-                      for token in df}
-
-    def encode(self, text: str, dim: int = 384) -> List[float]:
-        """将文本编码为固定维度向量。"""
-        tokens = self._tokenize(text)
-        if not self._vocab or not tokens:
-            return [0.0] * dim
-
-        # TF-IDF 向量
-        vec = [0.0] * len(self._vocab)
-        for token in tokens:
-            if token in self._vocab:
-                tf = tokens.count(token) / len(tokens)
-                vec[self._vocab[token]] = tf * self._idf.get(token, 1.0)
-
-        # 哈希压缩到目标维度 (feature hashing)
-        result = [0.0] * dim
-        for i, v in enumerate(vec):
-            if v != 0:
-                h = hash(f"feat_{i}") % dim
-                result[h] += v
-
-        # L2 归一化
-        norm = __import__('math').sqrt(sum(x * x for x in result)) or 1.0
-        return [x / norm for x in result]
-
-
-# ============================================================
-# Embedding 工厂
-# ============================================================
-
-def _create_embedding_fn(model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"):
-    """创建 embedding 函数，自动降级。
-
-    优先级:
-      1. SentenceTransformers (多语言，需 torch)
-      2. ONNX Runtime (all-MiniLM-L6-v2，无需 CUDA DLL)
-      3. 纯 Python TF-IDF (零依赖兜底)
-    """
-    # L1: SentenceTransformers (多语言效果最好，但依赖 torch)
-    try:
-        from chromadb.utils import embedding_functions
-        fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=model_name,
-            device="cpu",
+        if isinstance(input, str):
+            input = [input]
+        resp = requests.post(
+            f"{self.url}/v1/embeddings",
+            json={"model": self.model, "input": list(input)},
+            timeout=self.timeout,
         )
-        logger.info(f"Embedding: sentence-transformers ({model_name})")
+        resp.raise_for_status()
+        data = resp.json()
+        items = sorted(data.get("data", []), key=lambda x: x.get("index", 0))
+        return [item["embedding"] for item in items]
+
+
+# Embedding 工厂
+
+def _create_embedding_fn(embedding_cfg: Optional[dict] = None):
+    """创建 embedding 函数。返回 (fn, 类型)；不可用时 fn 为 None。
+
+    **没有 TF-IDF 兜底**。曾经有个 `_FallbackEmbedding`，但它：
+      - 没实现 `__call__`，而调用方一律写作 `self._embed_fn([...])` → 调用即 TypeError
+      - `fit()` 从来没有被调用过，即使能调也只会编码出全零向量
+      - 而 `_store_ready` 在 tfidf 分支恒为 False，向量路根本不走 → 永远不会触发
+    三个条件叠在一起，让这个类**运行时不可达**，只在 README 里以
+    "TF-IDF 零依赖后备"的名义出现过 —— 承诺的东西其实不存在。
+
+    删掉之后语义反而更清楚：嵌入不可用 = 没有向量路，检索退回**中文 BM25**
+    （`_bm25_search`）。那本来就是更合适的降级目标 —— CJK bigram BM25 的
+    词面召回强于哈希压缩到 384 维的 TF-IDF。
+    """
+    cfg = embedding_cfg if isinstance(embedding_cfg, dict) else {}
+    if cfg.get("enabled", True):
         try:
-            _ = fn(["test"])
-        except Exception:
-            pass
-        return fn, "sentence-transformers"
-    except Exception as e:
-        logger.debug(f"SentenceTransformer 不可用: {e}")
+            url = cfg.get("url", "http://localhost:8099")
+            model = cfg.get("model", "WeMM-Embedding-2B")
+            timeout = float(cfg.get("timeout", 120))
+            fn = HttpEmbeddingFunction(url=url, model=model, timeout=timeout)
+            # 真实探测一次：服务没起会走按需拉起，首次需等模型加载（~20s）
+            dim = len(fn(["dim-probe"])[0])
+            logger.info("Embedding: 本地嵌入服务 (%s, dim=%s)", model, dim)
+            return fn, "transformers"
+        except Exception as e:
+            logger.warning("本地嵌入服务不可用(%s)，本次仅用中文 BM25 关键词检索", e)
+    else:
+        logger.warning("未启用本地嵌入，本次仅用中文 BM25 关键词检索")
 
-    # L2: ONNX Runtime (无需 CUDA DLL，无需 torch)
-    try:
-        from chromadb.utils import embedding_functions
-        fn = embedding_functions.ONNXMiniLM_L6_V2()
-        logger.info("Embedding: ONNX (all-MiniLM-L6-v2)")
-        try:
-            _ = fn(["test"])
-        except Exception:
-            pass
-        return fn, "onnx"
-    except Exception as e:
-        logger.debug(f"ONNX 不可用: {e}")
-
-    # L3: TF-IDF 纯 Python 兜底
-    logger.warning("所有 Embedding 后端不可用，降级为 TF-IDF 关键词匹配")
-    fallback = _FallbackEmbedding()
-    return fallback, "tfidf-fallback"
+    return None, "unavailable"
 
 
-# ============================================================
 # 对话 Markdown 存储
-# ============================================================
 
 class ConversationStore:
     """将对话保存为结构化 Markdown 文件。"""
@@ -287,18 +234,14 @@ class ConversationStore:
         return filepath.read_text(encoding="utf-8")
 
 
-# ============================================================
-# 向量知识库
-# ============================================================
+# 知识库
 
 class KnowledgeBase:
-    """本地向量知识库 — 语义检索历史对话。
+    """本地知识库 — 语义检索历史对话。
 
-    使用方式:
-      kb = KnowledgeBase(persist_dir="./knowledge_base")
-      kb.add_conversation(messages, metadata={"topic": "firewall"})
-      results = kb.search("防火墙状态怎么样", top_k=5)
-      context = kb.build_context("防火墙状态怎么样")
+    向量存于可插拔的 VectorStore（默认**进程内**，可选 Milvus/Qdrant）；
+    Markdown 始终存于本地，是事实源。
+    向量库不可用时自动降级为关键词检索，绝不阻塞/崩溃。
     """
 
     def __init__(
@@ -306,82 +249,86 @@ class KnowledgeBase:
         persist_dir: str = None,
         embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2",
         collection_name: str = "security_conversations",
+        vector_db_cfg: Optional[dict] = None,
+        embedding_cfg: Optional[dict] = None,
     ):
-        """
-        参数:
+        """参数:
           persist_dir: 持久化目录，默认项目根目录下的 knowledge_base/
-          embedding_model: sentence-transformers 模型名
-          collection_name: ChromaDB 集合名
+          embedding_model: 遗留参数（嵌入由 embedding_cfg 驱动），保留以兼容旧调用
+          collection_name: 向量集合名
+          vector_db_cfg: 向量库配置 {provider, fallback, timeout, milvus, qdrant}
+          embedding_cfg: 嵌入配置 {url, model, timeout, enabled}
         """
-        # 确定持久化目录
         if persist_dir is None:
             persist_dir = Path(__file__).parent.parent / "knowledge_base"
         self.persist_dir = Path(persist_dir)
-        self.chroma_dir = self.persist_dir / "chroma"
         self.conversations_dir = self.persist_dir / "conversations"
-        self.chroma_dir.mkdir(parents=True, exist_ok=True)
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
 
-        # Conversation store
+        # Conversation store (Markdown，永远可用)
         self.store = ConversationStore(self.conversations_dir)
 
-        # Embedding
-        self._embed_fn, self._embed_type = _create_embedding_fn(embedding_model)
+        # Embedding（优先本地嵌入服务；不可用时降级）
+        self._embed_fn, self._embed_type = _create_embedding_fn(embedding_cfg)
 
-        # ChromaDB
-        self._collection = None
+        # 向量库（默认进程内；可选 Milvus/Qdrant；全不可用时为 None）
+        from .vector_store import create_vector_store
+        self._store = create_vector_store(vector_db_cfg)
+        # 向量路要求「有 store」且「有可用的嵌入」二者兼备。
+        # 用 _embed_fn is not None 直接判断，而不是比字符串标签 ——
+        # 标签是给人看的，判断依据应该是对象本身在不在。
+        self._store_ready = self._store is not None and self._embed_fn is not None
+        self._vector_db_name = self._store.name if self._store else None
+        self._dim: Optional[int] = None
         self._collection_name = collection_name
-        self._init_chroma()
 
-    def _init_chroma(self):
-        """初始化 ChromaDB 客户端和集合。"""
-        try:
-            import chromadb
-            from chromadb.config import Settings
+        # 中文 BM25（关键词路）— 懒加载；语料变动时置 None 触发重建
+        self._bm25: Optional[Bm25Index] = None
+        self._bm25_chunks: Dict[str, Dict[str, Any]] = {}
 
-            self._client = chromadb.PersistentClient(
-                path=str(self.chroma_dir),
-                settings=Settings(anonymized_telemetry=False),
-            )
-
-            # 获取或创建集合
+        # 集合初始化（维度探测 + 建/校验集合）；失败则降级，不阻塞
+        if self._store_ready:
             try:
-                self._collection = self._client.get_collection(
-                    name=self._collection_name,
-                    embedding_function=self._embed_fn if self._embed_type != "tfidf-fallback" else None,
-                )
-                logger.info(f"ChromaDB 集合已加载: {self._collection_name} ({self._collection.count()} 条)")
-            except Exception:
-                self._collection = self._client.create_collection(
-                    name=self._collection_name,
-                    embedding_function=self._embed_fn if self._embed_type != "tfidf-fallback" else None,
-                    metadata={"description": "AI Security Guardian 对话知识库"},
-                )
-                logger.info(f"ChromaDB 集合已创建: {self._collection_name}")
+                self._ensure_collection()
+            except Exception as e:
+                logger.warning("向量集合初始化失败(%s)，降级关键词检索", e)
+                self._store = None
+                self._store_ready = False
 
-            # 如果是 fallback embedding，预训练词汇表
-            if self._embed_type == "tfidf-fallback" and self._collection.count() > 0:
-                existing = self._collection.get()
-                if existing and existing.get("documents"):
-                    self._embed_fn.fit(existing["documents"])
+    # 向量集合
 
-        except ImportError:
-            logger.warning("chromadb 未安装，知识库功能降级为纯文件模式")
-            logger.warning("安装: pip install chromadb")
-            self._client = None
-            self._collection = None
+    def _ensure_collection(self):
+        """探测嵌入维度并确保集合存在（维度不一致时重建）。"""
+        if not self._store_ready:
+            return
+        vec = self._embed_fn(["dim-probe"])[0]
+        self._dim = int(len(vec))
+        self._store.ensure_collection(self._collection_name, self._dim)
+        self._write_vector_meta()
 
-    # ================================================================
-    #  写入
-    # ================================================================
+    def _write_vector_meta(self):
+        meta = {
+            "collection_name": self._collection_name,
+            "dim": self._dim,
+            "provider": self._vector_db_name,
+            "embedding_type": self._embed_type,
+        }
+        try:
+            (self.persist_dir / "vector_meta.json").write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    # 写入
 
     def add_conversation(self, messages: List[Dict[str, str]],
                          metadata: Dict[str, Any] = None) -> Optional[str]:
         """添加对话到知识库。
 
-        1. 保存为 Markdown 文件
+        1. 保存为 Markdown 文件（始终执行，向量库不可用也不影响）
         2. 按 Q&A 分块
-        3. 向量化存储到 ChromaDB
+        3. 向量化存储到 Milvus/Qdrant
 
         返回: 对话 ID (文件路径 stem)
         """
@@ -395,44 +342,37 @@ class KnowledgeBase:
         # 2. 分块 — 每个 Q&A 对作为一个文档
         chunks = self._chunk_conversation(messages, conv_id)
 
-        if not chunks or self._collection is None:
-            return conv_id
+        # 3. 向量化存储（失败仅记日志，不影响 Markdown）
+        self._vectorize_chunks(conv_id, chunks, metadata or {})
 
-        # 3. 向量化存储
-        try:
-            ids = []
-            documents = []
-            metadatas = []
-            for i, chunk in enumerate(chunks):
-                chunk_id = f"{conv_id}_{i}"
-                ids.append(chunk_id)
-                documents.append(chunk["text"])
-                metadatas.append({
-                    "conversation_id": conv_id,
-                    "timestamp": metadata.get("timestamp", "") if metadata else "",
-                    "topics": ", ".join(chunk.get("topics", [])),
-                    "chunk_index": i,
-                    "role": chunk.get("role", "mixed"),
-                })
-
-            self._collection.add(
-                ids=ids,
-                documents=documents,
-                metadatas=metadatas,
-            )
-            logger.info(f"知识库已索引: {conv_id} ({len(chunks)} 个分块)")
-        except Exception as e:
-            logger.error(f"ChromaDB 写入失败: {e}")
-
+        self._bm25 = None  # 语料已变，关键词索引下轮懒重建
         return conv_id
+
+    def _vectorize_chunks(self, conv_id: str, chunks: List[Dict[str, Any]],
+                          metadata: Dict[str, Any]):
+        """分块嵌入并写入向量库（吞掉异常，保证 add_conversation 永不因向量失败崩溃）。"""
+        if not self._store_ready or not chunks:
+            return
+        ids = [f"{conv_id}_{i}" for i in range(len(chunks))]
+        documents = [c["text"] for c in chunks]
+        metadatas = [{
+            "conversation_id": conv_id,
+            "timestamp": metadata.get("timestamp", ""),
+            "topics": ", ".join(c.get("topics", [])),
+            "chunk_index": i,
+            "role": c.get("role", "mixed"),
+        } for i, c in enumerate(chunks)]
+        try:
+            vectors = self._embed_fn(documents)
+            self._store.add(ids=ids, documents=documents,
+                            metadatas=metadatas, vectors=vectors)
+            logger.info("知识库已索引: %s (%s 个分块)", conv_id, len(chunks))
+        except Exception as e:
+            logger.error("向量写入失败: %s", e)
 
     def _chunk_conversation(self, messages: List[Dict[str, str]],
                             conv_id: str) -> List[Dict[str, Any]]:
-        """将对话切分为 Q&A 分块。
-
-        每个 Q&A 对 = 一个用户问题 + AI 回答。
-        系统消息和单独的消息也保留。
-        """
+        """将对话切分为 Q&A 分块。"""
         chunks = []
         current_q = None
         current_a_parts = []
@@ -466,57 +406,115 @@ class KnowledgeBase:
                         "topics": [],
                         "role": "ai_standalone",
                     })
-            # system/tool 消息跳过，不参与分块
+        # system/tool 消息跳过，不参与分块
 
         flush()
         return chunks
 
-    # ================================================================
-    #  检索
-    # ================================================================
+    # 检索
+
+    # 关键词路（中文 BM25）
+
+    def _ensure_bm25_index(self) -> Bm25Index:
+        """懒加载**分块级** BM25 索引。
+
+        语料取自 Markdown（事实源），切块方式与向量化完全一致，因此 doc_id 就是
+        向量库里的 chunk id（``{conv_id}_{i}``）——**两路的键必须一致，RRF 才能对齐融合**。
+        语料变动（新增/删除对话、重建索引）时把 ``self._bm25`` 置 None 即触发重建。
+        """
+        if self._bm25 is not None:
+            return self._bm25
+        chunks: Dict[str, Dict[str, Any]] = {}
+        for md_file in self.store.list_files():
+            try:
+                messages = self._parse_markdown_to_messages(self.store.load(md_file))
+                if not messages:
+                    continue
+                for i, chunk in enumerate(self._chunk_conversation(messages, md_file.stem)):
+                    chunks[f"{md_file.stem}_{i}"] = {
+                        "text": chunk["text"],
+                        "topics": chunk.get("topics") or [],
+                        "role": chunk.get("role", ""),
+                        "conversation_id": md_file.stem,
+                        "chunk_index": i,
+                        "source": md_file.name,
+                    }
+            except Exception as e:  # noqa: BLE001
+                logger.debug("BM25 索引跳过 %s: %s", md_file.name, e)
+        self._bm25_chunks = chunks
+        self._bm25 = Bm25Index().build({cid: c["text"] for cid, c in chunks.items()})
+        logger.info("BM25 索引就绪: %d 个分块", len(chunks))
+        return self._bm25
+
+    def _bm25_search(self, query: str, top_k: int,
+                     filter_topics: List[str] = None) -> List[Dict[str, Any]]:
+        """关键词路召回，返回结构与向量路保持一致。"""
+        index = self._ensure_bm25_index()
+        allow = None
+        if filter_topics:
+            # 与向量路的 topics 过滤口径一致
+            allow = [cid for cid, c in self._bm25_chunks.items()
+                     if any(t in ", ".join(c.get("topics") or []) for t in filter_topics)]
+        out: List[Dict[str, Any]] = []
+        for cid, score in index.search(query, top_k=top_k, allow=allow):
+            c = self._bm25_chunks[cid]
+            out.append({
+                "id": cid,
+                "text": c["text"],
+                "metadata": {
+                    "conversation_id": c["conversation_id"],
+                    "chunk_index": c["chunk_index"],
+                    "role": c["role"],
+                    "topics": ", ".join(c.get("topics") or []),
+                    "source": c["source"],
+                },
+                "score": score,
+            })
+        return out
+
+    # 检索
 
     def search(self, query: str, top_k: int = 5,
                filter_topics: List[str] = None) -> List[Dict[str, Any]]:
-        """语义搜索知识库。
+        """混合检索：向量路 + 中文 BM25 路，**RRF 融合**。
 
-        参数:
-          query: 搜索查询
-          top_k: 返回结果数
-          filter_topics: 可选的话题过滤
+        相比原来「向量可用就不看关键词、挂了才退到整篇词频扫描」的单选式检索：
+        - 两路**并行召回再融合**，向量补语义、BM25 补精确术语；
+        - 向量库不可用时自动退为「仅 BM25」，仍远强于整篇词频扫描；
+        - 两路都无结果才退到兜底实现。
 
-        返回: [{id, text, metadata, score}, ...]
+        返回: [{id, text, metadata, score}, ...]；融合后 score 为 RRF 分。
         """
-        if self._collection is None or self._collection.count() == 0:
-            return self._fallback_search(query, top_k)
+        vec_hits: List[Dict[str, Any]] = []
+        if self._store_ready and self.count:
+            try:
+                qv = self._embed_fn([query])[0]
+                vec_hits = self._store.search(qv, min(top_k, self.count), filter_topics)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("向量检索失败(%s)，本次仅用关键词路", e)
 
         try:
-            where_filter = None
-            if filter_topics:
-                where_filter = {
-                    "$or": [{"topics": {"$contains": t}} for t in filter_topics]
-                }
+            kw_hits = self._bm25_search(query, top_k=max(top_k * 2, 8),
+                                        filter_topics=filter_topics)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("BM25 检索失败(%s)，本次仅用向量路", e)
+            kw_hits = []
 
-            results = self._collection.query(
-                query_texts=[query],
-                n_results=min(top_k, self._collection.count()),
-                where=where_filter,
-            )
-
-            formatted = []
-            if results and results.get("ids") and results["ids"][0]:
-                for i, doc_id in enumerate(results["ids"][0]):
-                    formatted.append({
-                        "id": doc_id,
-                        "text": results["documents"][0][i] if results.get("documents") else "",
-                        "metadata": results["metadatas"][0][i] if results.get("metadatas") else {},
-                        "score": results["distances"][0][i] if results.get("distances") else 0,
-                    })
-
-            return formatted
-
-        except Exception as e:
-            logger.warning(f"ChromaDB 搜索失败: {e}，降级为关键词搜索")
+        if not vec_hits and not kw_hits:
             return self._fallback_search(query, top_k)
+
+        # 同一分块可能两路都命中：保留字段更全的一条（向量路来自库，元数据更完整）
+        by_id: Dict[str, Dict[str, Any]] = {h["id"]: h for h in kw_hits}
+        by_id.update({h["id"]: h for h in vec_hits})
+        scores = rrf_scores([[h["id"] for h in vec_hits], [h["id"] for h in kw_hits]])
+        order = sorted(scores, key=lambda d: (-scores[d], d))
+        fused: List[Dict[str, Any]] = []
+        for cid in order[:top_k]:
+            hit = by_id.get(cid)
+            if hit:
+                # 对外给 RRF 分（两路量纲不同，直接暴露来源分会让调用方误比较）
+                fused.append({**hit, "score": round(scores[cid], 6)})
+        return fused
 
     def _fallback_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """关键词搜索后备方案 — 扫描 Markdown 文件。"""
@@ -566,9 +564,7 @@ class KnowledgeBase:
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
-    # ================================================================
-    #  上下文构建
-    # ================================================================
+    # 上下文构建
 
     def build_context(self, query: str, top_k: int = 3,
                       max_tokens: int = 800) -> str:
@@ -607,16 +603,17 @@ class KnowledgeBase:
 
         return context
 
-    # ================================================================
-    #  管理
-    # ================================================================
+    # 管理
 
     @property
     def count(self) -> int:
-        """知识库文档总数。"""
-        if self._collection:
-            return self._collection.count()
-        return 0
+        """向量库文档总数（不可用/异常时为 0）。"""
+        if not self._store_ready:
+            return 0
+        try:
+            return self._store.count()
+        except Exception:
+            return 0
 
     @property
     def conversation_count(self) -> int:
@@ -625,16 +622,11 @@ class KnowledgeBase:
 
     def delete_conversation(self, conv_id: str):
         """删除对话及其向量。"""
-        # 删除 ChromaDB 向量
-        if self._collection:
+        if self._store_ready:
             try:
-                existing = self._collection.get()
-                to_delete = [eid for eid in existing.get("ids", [])
-                            if eid.startswith(conv_id)]
-                if to_delete:
-                    self._collection.delete(ids=to_delete)
+                self._store.delete_by_conversation(conv_id)
             except Exception as e:
-                logger.warning(f"删除向量失败: {e}")
+                logger.warning("删除向量失败: %s", e)
 
         # 删除 Markdown 文件
         md_path = self.conversations_dir / f"{conv_id}.md"
@@ -642,52 +634,36 @@ class KnowledgeBase:
             md_path.unlink()
             logger.info(f"已删除对话: {conv_id}")
 
+        self._bm25 = None  # 语料已变，关键词索引下轮懒重建
+
     def rebuild_index(self):
         """从 Markdown 文件重建整个向量索引。"""
-        if self._collection is None:
-            logger.warning("ChromaDB 不可用，无法重建索引")
+        if not self._store_ready:
+            logger.warning("向量库不可用，无法重建索引")
             return
 
-        # 清空现有索引
+        # 清空并重建集合
         try:
-            existing = self._collection.get()
-            if existing and existing.get("ids"):
-                self._collection.delete(ids=existing["ids"])
-        except Exception:
-            pass
+            self._store.drop()
+            self._ensure_collection()
+        except Exception as e:
+            logger.warning("重建集合失败: %s", e)
+            self._store_ready = False
+            return
 
-        # 重新索引所有对话
+        # 重新索引所有对话（只向量化，不重写 Markdown）
         for md_file in self.store.list_files():
             try:
                 content = self.store.load(md_file)
-                # 解析 Markdown 为消息列表
                 messages = self._parse_markdown_to_messages(content)
                 if messages:
                     chunks = self._chunk_conversation(messages, md_file.stem)
-                    if chunks:
-                        ids = []
-                        documents = []
-                        metadatas = []
-                        for i, chunk in enumerate(chunks):
-                            ids.append(f"{md_file.stem}_{i}")
-                            documents.append(chunk["text"])
-                            metadatas.append({
-                                "conversation_id": md_file.stem,
-                                "chunk_index": i,
-                                "role": chunk.get("role", "mixed"),
-                            })
-                        self._collection.add(
-                            ids=ids, documents=documents, metadatas=metadatas)
+                    self._vectorize_chunks(md_file.stem, chunks, {})
             except Exception as e:
                 logger.warning(f"重新索引 {md_file.name} 失败: {e}")
 
-        # 重新训练 fallback
-        if self._embed_type == "tfidf-fallback" and self._collection.count() > 0:
-            existing = self._collection.get()
-            if existing and existing.get("documents"):
-                self._embed_fn.fit(existing["documents"])
-
-        logger.info(f"索引重建完成: {self._collection.count()} 条记录")
+        self._bm25 = None  # 关键词索引随之重建
+        logger.info(f"索引重建完成: {self.count} 条记录")
 
     def _parse_markdown_to_messages(self, content: str) -> List[Dict[str, str]]:
         """将保存的 Markdown 解析回消息列表。"""
@@ -696,17 +672,25 @@ class KnowledgeBase:
         current_role = None
         current_content = []
         in_frontmatter = False
+        frontmatter_seen = False
 
         for line in lines:
-            if line.strip() == "---":
-                if not in_frontmatter:
-                    in_frontmatter = True
+            stripped = line.strip()
+            if not frontmatter_seen:
+                # 仅文件头部的 --- 是 frontmatter 边界；关闭后其余 --- 只是正文分隔线
+                if stripped == "---":
+                    in_frontmatter = not in_frontmatter
+                    if not in_frontmatter:
+                        frontmatter_seen = True
                     continue
-                else:
-                    in_frontmatter = False
+                if in_frontmatter:
                     continue
-            if in_frontmatter:
-                continue
+            else:
+                if stripped == "---" or not stripped:
+                    continue  # 正文分隔线/空行
+
+            if line.startswith("## ") or line.startswith("# "):
+                continue  # 跳过标题
 
             if line.startswith("**User**:"):
                 if current_role and current_content:
@@ -726,10 +710,6 @@ class KnowledgeBase:
                                      "content": "\n".join(current_content).strip()})
                 current_role = "system"
                 current_content = [line.replace("**System**:", "").strip()]
-            elif line.startswith("## ") or line.startswith("# "):
-                continue  # 跳过标题
-            elif line.startswith("---") or not line.strip():
-                continue  # 跳过分隔线和空行
             else:
                 if current_role:
                     current_content.append(line)
@@ -745,24 +725,33 @@ class KnowledgeBase:
         return {
             "conversations": self.conversation_count,
             "vector_count": self.count,
+            "bm25_chunks": len(self._ensure_bm25_index()) if self.conversation_count else 0,
             "embedding_type": self._embed_type,
-            "chroma_dir": str(self.chroma_dir),
+            "vector_db": self._vector_db_name or "none",
+            "storage_dir": str(self.conversations_dir),
             "conversations_dir": str(self.conversations_dir),
         }
 
 
-# ============================================================
 # 全局单例
-# ============================================================
 
 _kb_instance: Optional[KnowledgeBase] = None
+_kb_lock = threading.Lock()
 
 
-def get_knowledge_base(persist_dir: str = None) -> KnowledgeBase:
-    """获取全局知识库实例 (懒加载单例)。"""
+def get_knowledge_base(persist_dir: str = None,
+                       vector_db_cfg: Optional[dict] = None,
+                       embedding_cfg: Optional[dict] = None) -> KnowledgeBase:
+    """获取全局知识库实例 (懒加载单例，线程安全)。"""
     global _kb_instance
     if _kb_instance is None:
-        _kb_instance = KnowledgeBase(persist_dir=persist_dir)
+        with _kb_lock:
+            if _kb_instance is None:
+                _kb_instance = KnowledgeBase(
+                    persist_dir=persist_dir,
+                    vector_db_cfg=vector_db_cfg,
+                    embedding_cfg=embedding_cfg,
+                )
     return _kb_instance
 
 

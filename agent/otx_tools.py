@@ -57,65 +57,33 @@ def _otx_request(endpoint: str) -> dict:
         return {"error": "request_failed", "message": str(e)}
 
 
-# ================================================================
-#  Tool handlers
-# ================================================================
+# ---- Tool handlers ----
 
 def threat_check_ip(ip: str) -> dict:
     """Query OTX for IP reputation."""
-    data = _otx_request(f"/indicators/IPv4/{ip}/general")
-    if "error" in data:
-        return data
-
-    pulses = data.get("pulse_info", {}).get("pulses", [])
-    return {
+    return _otx_lookup("IPv4", ip, lambda d: {
         "ip": ip,
-        "reputation": data.get("reputation", 0),
-        "pulse_count": data.get("pulse_info", {}).get("count", 0),
-        "country": data.get("country_name", "unknown"),
-        "city": data.get("city", "unknown"),
-        "malicious": _is_malicious(data),
-        "threat_tags": _extract_tags(pulses)[:10],
-        "recent_pulses": _summarize_pulses(pulses, 3),
-    }
+        "country": d.get("country_name", "unknown"),
+        "city": d.get("city", "unknown"),
+    })
 
 
 def threat_check_domain(domain: str) -> dict:
     """Query OTX for domain reputation."""
-    data = _otx_request(f"/indicators/domain/{domain}/general")
-    if "error" in data:
-        return data
-
-    pulses = data.get("pulse_info", {}).get("pulses", [])
-    return {
+    return _otx_lookup("domain", domain, lambda d: {
         "domain": domain,
-        "reputation": data.get("reputation", 0),
-        "pulse_count": data.get("pulse_info", {}).get("count", 0),
-        "alexa_rank": data.get("alexa", "unknown"),
-        "whois": data.get("whois", "")[:200],
-        "malicious": _is_malicious(data),
-        "threat_tags": _extract_tags(pulses)[:10],
-        "recent_pulses": _summarize_pulses(pulses, 3),
-    }
+        "alexa_rank": d.get("alexa", "unknown"),
+        "whois": d.get("whois", "")[:200],
+    })
 
 
 def threat_check_hash(file_hash: str) -> dict:
     """Query OTX for file hash reputation."""
-    data = _otx_request(f"/indicators/file/{file_hash}/general")
-    if "error" in data:
-        return data
-
-    pulses = data.get("pulse_info", {}).get("pulses", [])
-    return {
+    return _otx_lookup("file", file_hash, lambda d: {
         "hash": file_hash,
-        "reputation": data.get("reputation", 0),
-        "pulse_count": data.get("pulse_info", {}).get("count", 0),
-        "malware_name": data.get("malware", "unknown"),
-        "file_type": data.get("type", "unknown"),
-        "malicious": _is_malicious(data),
-        "threat_tags": _extract_tags(pulses)[:10],
-        "recent_pulses": _summarize_pulses(pulses, 3),
-    }
+        "malware_name": d.get("malware", "unknown"),
+        "file_type": d.get("type", "unknown"),
+    })
 
 
 def threat_pulse_search(query: str) -> dict:
@@ -140,9 +108,29 @@ def threat_pulse_search(query: str) -> dict:
     }
 
 
-# ================================================================
-#  Helpers
-# ================================================================
+# ---- Helpers ----
+
+def _otx_lookup(indicator_type: str, value: str, extra_fields) -> dict:
+    """Query OTX and shape the common response fields.
+
+    indicator_type/value select the OTX endpoint; extra_fields receives the
+    parsed response and returns the indicator-specific keys to merge in.
+    """
+    data = _otx_request(f"/indicators/{indicator_type}/{value}/general")
+    if "error" in data:
+        return data
+
+    pulses = data.get("pulse_info", {}).get("pulses", [])
+    result = {
+        "reputation": data.get("reputation", 0),
+        "pulse_count": data.get("pulse_info", {}).get("count", 0),
+        "malicious": _is_malicious(data),
+        "threat_tags": _extract_tags(pulses)[:10],
+        "recent_pulses": _summarize_pulses(pulses, 3),
+    }
+    result.update(extra_fields(data))
+    return result
+
 
 def _is_malicious(data: dict) -> bool:
     """Determine if indicator is considered malicious."""
@@ -175,3 +163,4 @@ def _summarize_pulses(pulses: list, n: int) -> list[dict]:
 
 
 import urllib.parse  # noqa: E402
+

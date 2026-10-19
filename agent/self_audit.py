@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -36,35 +37,49 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from . import c2_ports
+
 logger = logging.getLogger("Guardian.SelfAudit")
 
-# ================================================================
-#  Constants
-# ================================================================
+# ---- Constants ----
 
 # Packages that are ALWAYS suspicious — common in malware/botnets/RATs
 # These should never appear in any legitimate project
+# 纯攻击性工具 —— 出现在终端用户机器上就值得报 CRITICAL
 MALWARE_PACKAGES = [
-    "socketify", "pyrdp", "pypykatz", "lsassy",
-    "winpwn", "pwn", "pwntools",
-    "pyinstaller", "nuitka", "cx-freeze", "pyarmor",
-    "discord.py", "telegram-bot", "slack-sdk", "mastodon",
-    "requests-toolbelt", "beautifulsoup4-scraper",
+    "pyrdp", "pypykatz", "lsassy", "winpwn", "pwn", "pwntools",
+    "beautifulsoup4-scraper",          # 疑似抢注名（真包是 beautifulsoup4）
 ]
 
-# Packages that are suspicious in normal apps but EXPECTED in security tools
-# These will generate a WARNING (not CRITICAL) for security tools
+# 合法但常被滥用 —— 只报 WARNING。
+#
+# 这些包本身完全正常：打包器、通讯库、requests 的官方配套库。它们出现在一个
+# 安全管家进程里值得看一眼，但**不是恶意软件**。
+# 曾经它们混在 MALWARE_PACKAGES 里按 CRITICAL 计 —— 后果是 LangGraph 带进来一个
+# requests-toolbelt，干净环境每次审计都报 CRITICAL、评分直接掉 30 分。
+# 一条永远误报的判据和永远漏报一样有害：它只会训练人忽略告警。
+DUAL_USE_PACKAGES = [
+    "pyinstaller", "nuitka", "cx-freeze", "pyarmor",         # 打包 / 混淆
+    "discord.py", "telegram-bot", "slack-sdk", "mastodon",   # 通讯（常见 C2 信道）
+    "requests-toolbelt", "socketify",
+]
+
+# 在普通应用里可疑、但在安全工具里是意料之中 —— WARNING
 SECURITY_TOOLING_PACKAGES = [
     "scapy", "python-nmap", "pyshark", "impacket",
     "paramiko", "pexpect", "keyboard", "pynput",
 ]
 
 # Combined list for audit display purposes
-SUSPICIOUS_PACKAGES = MALWARE_PACKAGES + SECURITY_TOOLING_PACKAGES
+SUSPICIOUS_PACKAGES = MALWARE_PACKAGES + DUAL_USE_PACKAGES + SECURITY_TOOLING_PACKAGES
 
 # Files that MUST exist and have valid content
 CRITICAL_FILES = [
     "agent/core.py",
+    # 真正的编排在这里：core.py 已退化为薄壳，状态图才是主循环
+    "agent/graph.py",
+    "agent/graph_model.py",
+    "agent/graph_tools.py",
     "agent/tools.py",
     "agent/sandbox.py",
     "agent/llm.py",
@@ -74,21 +89,27 @@ CRITICAL_FILES = [
     "pc_agent/config.yaml",
 ]
 
-# Patterns that should never appear in our source code
+# 只收录「在本项目里绝不可能合法出现」的模式。
+#
+# 这份清单是有意做窄的：它是启发式篡改检测，不是通用杀毒。**任何一条在干净代码树上
+# 会命中的模式都必须删掉或收窄** —— 一个每次启动都报 9 条假 CRITICAL 的扫描器，
+# 只会训练人无视它，比没有更糟。tests/agent/test_self_audit_patterns.py 用一个
+# 全树扫描用例把这条不变量钉住。
+#
+# 已删除的例子：`ctypes\.windll\.\w+\.\w+.*\(`。本项目的职责就是调 Windows API
+# （sandbox.py / tools.py / esp32_isolation.py 都在用 ctypes.windll），
+# 这条模式在干净树上会报 9 处，对安全判断零信息量。
 CODE_INJECTION_PATTERNS = [
-    rb"exec\s*\(\s*base64",           # base64-encoded exec
-    rb"eval\s*\(\s*compile\s*\(",     # eval(compile( — obfuscation
-    rb"__import__\s*\(\s*['\"]\s*['\"]",  # dynamic import of empty string
-    rb"ctypes\.windll\.\w+\.\w+.*\(",  # raw ctypes call (likely injection)
-    rb"subprocess\.call\s*\(.*shell\s*=\s*True",  # un-sandboxed shell
-    rb"socket\.socket\s*\(.*connect\s*\(",  # raw socket connection
-    rb"requests\.post\s*\(.*data\s*=\s*",  # data exfiltration
-    rb"shutil\.copy.*\.(exe|dll|sys)",  # binary planting
+    rb"exec\s*\(\s*base64",           # base64 编码后执行
+    rb"eval\s*\(\s*compile\s*\(",     # eval 套 compile —— 混淆
+    rb"__import__\s*\(\s*['\"]\s*['\"]",  # 动态导入空串
+    rb"subprocess\.call\s*\(.*shell\s*=\s*True",  # 未沙箱化的 shell
+    rb"socket\.socket\s*\(.*connect\s*\(",  # 裸 socket 连接
+    rb"requests\.post\s*\(.*data\s*=\s*",  # 外发数据
+    rb"shutil\.copy.*\.(exe|dll|sys)",  # 投放二进制
 ]
 
-# ================================================================
-#  Integrity Manifest
-# ================================================================
+# ---- Integrity Manifest ----
 
 class IntegrityManifest:
     """Load and verify a manifest of known-good file hashes."""
@@ -132,9 +153,7 @@ class IntegrityManifest:
         return self._loaded
 
 
-# ================================================================
-#  File Hasher
-# ================================================================
+# ---- File Hasher ----
 
 class FileHasher:
     """Compute and verify SHA256 hashes of project files."""
@@ -172,9 +191,7 @@ class FileHasher:
         return results
 
 
-# ================================================================
-#  Runtime Integrity Checker
-# ================================================================
+# ---- Runtime Integrity Checker ----
 
 class RuntimeChecker:
     """Check the running process for signs of tampering."""
@@ -208,10 +225,14 @@ class RuntimeChecker:
             return {"ok": False, "error": "Python executable not found!"}
 
         # Check if the exe is in a reasonable location
+        #
+        # 只保留**真正可疑**的位置。曾经还包含 "desktop" 和 "文档"，但项目放在
+        # 桌面上是最常见的开发布局之一 —— 那两条会让每一次干净启动都报一条
+        # CRITICAL，是纯粹的噪音。真正值得警惕的是临时目录与下载目录：
+        # 解释器被人替换后通常就落在那里。
         exe_path = str(exe).lower()
         suspicious_locations = [
-            "temp", "downloads", "appdata\\local\\temp",
-            "desktop", "文档", "下载",
+            "temp", "downloads", "appdata\\local\\temp", "下载",
         ]
         in_suspicious_location = any(s in exe_path for s in suspicious_locations)
 
@@ -249,50 +270,60 @@ class RuntimeChecker:
         }
 
 
-# ================================================================
-#  Code Injection Scanner
-# ================================================================
+# ---- Code Injection Scanner ----
 
 class CodeScanner:
     """Scan source files for injection patterns."""
 
     @staticmethod
     def scan_file(path: Path) -> list[dict]:
-        """Scan a single file for code injection patterns. Returns list of findings."""
+        """扫描单个文件。返回 finding 列表。
+
+        这里必须是**真正则匹配**。曾经写的是 `if pattern in content` —— 拿正则
+        **源码文本**当字面子串去搜，结果是双向失效：真实注入代码永远 0 命中，
+        却把本文件里那几行模式定义当成了命中（实测 quick_check 报 8 条假 CRITICAL）。
+        """
         findings = []
         try:
-            content = path.read_bytes()
-            for pattern in CODE_INJECTION_PATTERNS:
-                if pattern in content:
-                    # Find line number
-                    line_num = content[:content.find(pattern)].count(b"\n") + 1
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Cannot scan %s: %s", path, e)
+            return findings
+
+        lines = text.splitlines()
+        for pattern in CODE_INJECTION_PATTERNS:
+            try:
+                rx = re.compile(pattern.decode("utf-8"))
+            except re.error as e:  # 模式写错了要吵，不要静默跳过
+                logger.warning("无效的注入模式 %r: %s", pattern, e)
+                continue
+            for i, line in enumerate(lines, 1):
+                if rx.search(line):
                     findings.append({
                         "file": str(path),
-                        "line": line_num,
-                        "pattern": str(pattern),
+                        "line": i,
+                        "pattern": pattern.decode("utf-8"),
                         "severity": "CRITICAL",
                     })
-        except Exception as e:
-            logger.debug("Cannot scan %s: %s", path, e)
         return findings
 
     @staticmethod
     def scan_directory(root: Path) -> list[dict]:
-        """Scan all Python files for injection patterns."""
+        """扫描一个目录下的全部 Python 文件。
+
+        刻意**不再跳过 self_audit.py**。原来跳过它是为了绕开上面那个假阳性 ——
+        用排除法掩盖 bug，代价是往 self_audit.py 里注入代码永远不会被发现。
+        修好匹配之后这个豁免就没有存在理由了。
+        """
         all_findings = []
         for py_file in root.rglob("*.py"):
             if any(p in py_file.parts for p in ("__pycache__", ".venv", ".git")):
-                continue
-            # Skip self_audit.py — it contains the pattern definitions
-            if py_file.name == "self_audit.py":
                 continue
             all_findings.extend(CodeScanner.scan_file(py_file))
         return all_findings
 
 
-# ================================================================
-#  Config Guard
-# ================================================================
+# ---- Config Guard ----
 
 class ConfigGuard:
     """Verify config files haven't been tampered to redirect API calls."""
@@ -349,9 +380,7 @@ class ConfigGuard:
         }
 
 
-# ================================================================
-#  Dependency Auditor
-# ================================================================
+# ---- Dependency Auditor ----
 
 class DependencyAuditor:
     """Check pip packages for integrity and suspicious entries."""
@@ -376,10 +405,12 @@ class DependencyAuditor:
         """Run full dependency audit."""
         packages = DependencyAuditor.get_installed_packages()
         found_malware = []
+        found_dual_use = []
         found_security_tooling = []
         found_typosquatting = []
 
         malware_lower = [s.lower() for s in MALWARE_PACKAGES]
+        dual_lower = [s.lower() for s in DUAL_USE_PACKAGES]
         tooling_lower = [s.lower() for s in SECURITY_TOOLING_PACKAGES]
 
         for pkg_name in packages:
@@ -390,6 +421,15 @@ class DependencyAuditor:
                     "version": packages[pkg_name],
                     "severity": "CRITICAL",
                     "reason": "Malware/botnet-associated package",
+                })
+
+            # 合法但常被滥用 (WARNING only) —— 不参与 critical_failures
+            if pkg_name.lower() in dual_lower:
+                found_dual_use.append({
+                    "package": pkg_name,
+                    "version": packages[pkg_name],
+                    "severity": "WARNING",
+                    "reason": "合法但常被滥用的包；若非预期依赖请核查",
                 })
 
             # Check against security-tooling list (WARNING only)
@@ -415,15 +455,14 @@ class DependencyAuditor:
         return {
             "total_packages": len(packages),
             "malware_packages": found_malware,
+            "dual_use_packages": found_dual_use,
             "security_tooling": found_security_tooling,
             "typosquatting_hits": found_typosquatting,
             "clean": len(found_malware) == 0 and len(found_typosquatting) == 0,
         }
 
 
-# ================================================================
-#  Network Self-Check
-# ================================================================
+# ---- Network Self-Check ----
 
 class NetworkSelfCheck:
     """Verify the guardian's own network connections are legitimate."""
@@ -441,8 +480,9 @@ class NetworkSelfCheck:
         "github.com",
     ]
 
-    # Ports that the guardian should NEVER connect to
-    SUSPICIOUS_PORTS = {4444, 31337, 6666, 6667, 6697, 8080, 8443, 9001, 9999}
+    # 守护进程自身绝不该外联的端口。唯一来源见 agent/c2_ports.py ——
+    # 此前这里与 esp32_isolation 各存一份、元素完全相同。
+    SUSPICIOUS_PORTS = c2_ports.GUARDIAN_BLOCKED_PORTS
 
     @staticmethod
     def check() -> dict:
@@ -512,12 +552,10 @@ class NetworkSelfCheck:
                 "detail": legitimate_connections[:10],
             }
         except Exception as e:
-            return {"error": str(e), "clean": True}
+            return {"error": str(e), "clean": None}
 
 
-# ================================================================
-#  Sandbox Integrity Test
-# ================================================================
+# ---- Sandbox Integrity Test ----
 
 class SandboxTester:
     """Verify the 6-layer sandbox is actually working by testing each layer."""
@@ -587,29 +625,46 @@ class SandboxTester:
             results["layer1_whitelist"] = {"passed": False, "error": str(e)}
             all_passed = False
 
-        # Layer 2: Job Object test (Windows only, requires admin in some configs)
+        # Layer 2: Job Object 层（仅 Windows，部分配置需要提权）
         if sys.platform == "win32":
             try:
                 job = create_job_object("GuardianSelfTest")
                 close_job_handle(job)
-                results["layer2_job_object"] = {"passed": True}
+                results["layer2_job_object"] = {"passed": True, "verified": True}
             except OSError as e:
-                # Error 24/5 typically means insufficient privilege — not a sandbox failure
+                # 提权不足**不代表**沙箱失效，但**也不能**因此判「通过」——
+                # 原来这里就是 `passed: True` + 一句 note，等于把「没测成」粉饰成
+                # 「测过了」。如实记为「未能验证」，并让整轮审计不通过，
+                # 这样用户能看到「以管理员身份跑一次才能验」这个可操作提示。
                 results["layer2_job_object"] = {
-                    "passed": True,
-                    "note": f"Job Object requires elevated privileges ({e})",
+                    "passed": False,
+                    "verified": False,
+                    "note": f"Job Object 需提权才能验证: {e}",
                 }
+                all_passed = False
             except Exception as e:
-                results["layer2_job_object"] = {"passed": False, "error": str(e)}
+                results["layer2_job_object"] = {
+                    "passed": False, "verified": True, "error": str(e),
+                }
                 all_passed = False
         else:
-            results["layer2_job_object"] = {"passed": True, "note": "Not Windows — skipped"}
+            results["layer2_job_object"] = {
+                "passed": False, "verified": False, "note": "非 Windows 平台，此层无法验证",
+            }
+            all_passed = False
 
-        # Layer 3: Restricted Token test
+        # Layer 3: Restricted Token —— **尚未实现**
+        # 这里原先硬编码 {"passed": True, "note": "Token stripping verified at
+        # sandbox execution time"}，而沙箱执行路径里根本没有任何 token 操作 ——
+        # 那句 note 是假的，自审计因此谎报沙箱就绪、评分虚高。
+        # 宁可如实报「未实现」，也不留假通过。
         results["layer3_restricted_token"] = {
-            "passed": True,
-            "note": "Token stripping verified at sandbox execution time",
+            "passed": False,
+            "implemented": False,
+            "note": "该层尚未实现：创建受限令牌需要 CreateRestrictedToken + "
+                    "CreateProcessAsUser，尚未接入 SandboxExecutor",
         }
+        all_passed = False
 
         # Layer 5: Blocked patterns test
         try:
@@ -647,9 +702,7 @@ class SandboxTester:
         return results
 
 
-# ================================================================
-#  Main Self-Auditor
-# ================================================================
+# ---- Main Self-Auditor ----
 
 class SelfAuditor:
     """Unified self-audit engine for the AI Security Guardian."""
@@ -888,9 +941,10 @@ class SelfAuditor:
         fi = checks.get("file_integrity", {})
         score -= len(fi.get("missing_critical_files", [])) * 20
 
-        # Dependencies: -30 per malware package, -5 per security-tooling
+        # Dependencies: -30 per malware package, -2 per dual-use, -5 per security-tooling
         deps = checks.get("dependencies", {})
         score -= len(deps.get("malware_packages", [])) * 30
+        score -= len(deps.get("dual_use_packages", [])) * 2
         score -= len(deps.get("security_tooling", [])) * 5
         score -= len(deps.get("typosquatting_hits", [])) * 20
 
@@ -966,15 +1020,24 @@ class SelfAuditor:
 
         st = checks.get("sandbox_test", {})
         for layer, result in st.items():
-            if isinstance(result, dict) and not result.get("passed", True):
-                failures.append(f"CRITICAL: Sandbox {layer} FAILED — {result.get('error', 'unknown')}")
+            if not isinstance(result, dict) or result.get("passed", True):
+                continue
+            # 具体原因是 error / note 之一，两者都没有时说明是「测了但不通过」，
+            # 这种才真的要说 unknown。
+            reason = result.get("error") or result.get("note") or "验证未通过"
+            if result.get("implemented") is False:
+                failures.append(f"CRITICAL: Sandbox {layer} 未实现 — {reason}")
+            elif result.get("verified") is False:
+                failures.append(f"CRITICAL: Sandbox {layer} 未能验证 — {reason}")
+            else:
+                failures.append(f"CRITICAL: Sandbox {layer} FAILED — {reason}")
+
+        # dual_use_packages 刻意不进这里：合法但常被滥用的包只降分、不算关键失败
 
         return failures
 
 
-# ================================================================
-#  Convenience functions for tool registration
-# ================================================================
+# ---- Convenience functions for tool registration ----
 
 def run_full_audit() -> dict:
     """Run a complete self-audit. Returns the full report as a dict."""
@@ -999,9 +1062,7 @@ def run_file_verification() -> dict:
     return auditor.verify_files()
 
 
-# ================================================================
-#  CLI entry point
-# ================================================================
+# ---- CLI entry point ----
 
 if __name__ == "__main__":
     import argparse
@@ -1058,7 +1119,7 @@ if __name__ == "__main__":
         result = auditor.verify_files()
     elif args.quick:
         result = auditor.quick_check()
-    elif args.full or True:  # Default: full audit
+    else:  # Default: full audit
         result = auditor.full_audit()
 
     if args.json:
@@ -1090,3 +1151,4 @@ if __name__ == "__main__":
                     print(f"     • [{issue.get('severity', '?')}] {issue.get('issue', str(issue))}")
 
             print("\n" + "=" * 60)
+

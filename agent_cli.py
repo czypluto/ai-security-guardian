@@ -24,8 +24,30 @@ sys.path.insert(0, str(Path(__file__).parent / "pc_agent"))
 
 from agent.config import AgentConfig
 from agent.core import AgentCore
+from agent.graph import resolve_approval_mode
 from agent.knowledge_base import get_knowledge_base
 from agent.tools import create_tool_registry
+
+
+def make_console_safe():
+    """让控制台输出永不因编码而崩。
+
+    中文 Windows 的控制台默认 GBK，本程序到处是 emoji（🛡️ 等），
+    一 print 就 UnicodeEncodeError —— 连 `--help` 都跑不完。
+    这里把 stdout/stderr 兜底成 UTF-8 且不可编码字符替换而非抛异常。
+    必须在 argparse 打印帮助**之前**调用，所以放在 main() 最前面。
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - 退一步：保留原编码，只保证不抛
+            try:
+                stream.reconfigure(errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def setup_logging():
@@ -71,9 +93,7 @@ def print_tools(agent: AgentCore):
         print()
 
 
-# ================================================================
-#  Stream display helpers
-# ================================================================
+# ---- Stream display helpers ----
 
 COLORS = {
     "tool_start": "\033[90m",   # gray
@@ -122,9 +142,7 @@ def display_stream(events):
     print()
 
 
-# ================================================================
-#  Helpers
-# ================================================================
+# ---- Helpers ----
 
 def _confirm_and_save(agent: AgentCore) -> bool:
     """询问用户是否保存对话到知识库。返回 True 表示已保存。"""
@@ -150,9 +168,7 @@ def _confirm_and_save(agent: AgentCore) -> bool:
     return False
 
 
-# ================================================================
-#  Modes
-# ================================================================
+# ---- Modes ----
 
 def run_single_query(agent: AgentCore, query: str):
     """Run a single question and exit."""
@@ -227,11 +243,14 @@ def run_chat_mode(agent: AgentCore):
                     print(f"  Conversations: {stats['conversations']}")
                     print(f"  Vector docs:   {stats['vector_count']}")
                     print(f"  Embedding:     {stats['embedding_type']}")
-                    print(f"  Storage:       {stats['chroma_dir']}")
+                    print(f"  Vector DB:     {stats['vector_db']}")
+                    print(f"  Storage:       {stats['storage_dir']}")
                     print()
                 else:
                     print("  Knowledge base not available.")
-                    print("  Install: pip install chromadb sentence-transformers")
+                    print("  Install: pip install pymilvus qdrant-client")
+                    print("  Start vector DB: bash scripts/start_vector_db.sh")
+                    print("  Start embed svc: wsl -e bash -lc 'bash scripts/run_embed.sh'")
                     print()
             elif cmd[0] == "run":
                 # Direct tool invocation: /run scan_network
@@ -276,11 +295,11 @@ def run_chat_mode(agent: AgentCore):
         print()
 
 
-# ================================================================
-#  Main
-# ================================================================
+# ---- Main ----
 
 def main():
+    make_console_safe()
+
     parser = argparse.ArgumentParser(
         description="🛡️  AI Security Guardian — CLI Agent",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -297,6 +316,10 @@ Examples:
     parser.add_argument("--list-tools", "-l", action="store_true", help="List available tools")
     parser.add_argument("--config", default=None, help="Path to config.yaml")
     parser.add_argument("--model", "-m", default=None, help="Force specific LLM provider")
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="自动批准 run_command / install_skill 等敏感工具，不再逐次确认")
+    parser.add_argument("--lockdown", action="store_true",
+                        help="启动自检发现 CRITICAL 问题就拒绝启动（也可在配置里开 agent.lockdown_on_critical）")
     args = parser.parse_args()
 
     setup_logging()
@@ -311,22 +334,44 @@ Examples:
             p.enabled = (p.name == args.model)
     config.system_prompt = config.system_prompt or ""  # Will use DEFAULT
 
+    # 审批模式归一化：显式 --yes 才自动放行；否则没有可交互 stdin（管道/重定向/
+    # 服务化）时降级为自动拒绝 —— fail-closed，见 agent/graph.resolve_approval_mode。
+    # GUI 侧是人在场（QMessageBox），不走这条路径。
+    if args.yes:
+        config.approval_mode = "auto_approve"
+    else:
+        config.approval_mode = resolve_approval_mode(config)
+
     # Create agent
     tools = create_tool_registry()
 
-    # Initialize knowledge base
+    # Initialize knowledge base (向量库默认进程内，可选 Milvus/Qdrant；
+    #                           嵌入为本地 transformers 服务；不可达自动降级为关键词检索)
     kb = None
     if config.knowledge_base_enabled:
         try:
             kb = get_knowledge_base(
                 persist_dir=config.knowledge_base_dir or None,
+                vector_db_cfg=config.knowledge_base_vector_db,
+                embedding_cfg=config.knowledge_base_embedding,
             )
-            # Override embedding model if different from default
-            if config.knowledge_base_embedding_model and kb._embed_type == "sentence-transformers":
-                pass  # Model is set at init time; rebuild if needed
-            print(f"  \033[90m知识库: {kb.conversation_count} 对话, {kb.count} 向量\033[0m", file=sys.stderr)
+            print(f"  \033[90m知识库: {kb.conversation_count} 对话, {kb.count} 向量, "
+                  f"嵌入={kb._embed_type}, 向量库={kb._vector_db_name}\033[0m", file=sys.stderr)
         except Exception as e:
             print(f"  \033[90m知识库初始化跳过: {e}\033[0m", file=sys.stderr)
+
+    # 启动熔断（opt-in）：默认关闭，开了才在严重问题面前拒绝启动
+    if args.lockdown or config.lockdown_on_critical:
+        from agent.self_audit import SelfAuditor
+        fatal = [i for i in SelfAuditor().quick_check().get("issues", [])
+                 if i.get("severity") == "CRITICAL"]
+        if fatal:
+            print("\n  \033[31m🚫 启动已中止：自检发现严重问题，且已开启熔断\033[0m", file=sys.stderr)
+            for issue in fatal[:8]:
+                print(f"     🔴 {issue.get('issue') or issue.get('file') or issue}", file=sys.stderr)
+            print("\n     确认无误后：去掉 --lockdown；若只是改过代码导致基线过期，"
+                  "运行 python generate_integrity_manifest.py 重建基线即可。\n", file=sys.stderr)
+            sys.exit(2)
 
     agent = AgentCore(config, tools, knowledge_base=kb)
 
@@ -344,3 +389,4 @@ Examples:
 
 if __name__ == "__main__":
     main()
+
