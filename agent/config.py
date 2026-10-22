@@ -72,7 +72,7 @@ class AgentConfig:
     lockdown_on_critical: bool = False
 
     # KB 上下文检索的超时预算（秒）；0 = 不限。
-    # GUI 靠它防止嵌入服务冷启动（约 20s）拖慢首条回复，CLI 顺带获得同样能力。
+    # BM25 通常毫秒级；保留预算用于兜底异常磁盘 I/O，避免首条回复被拖住。
     kb_context_timeout: float = 4.0
 
     # System prompt
@@ -86,9 +86,6 @@ class AgentConfig:
     knowledge_base_dir: str = ""
     knowledge_base_enabled: bool = True
     knowledge_base_top_k: int = 3
-    knowledge_base_embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    knowledge_base_vector_db: dict = None
-    knowledge_base_embedding: dict = None
 
     @staticmethod
     def _load_dotenv():
@@ -210,14 +207,6 @@ class AgentConfig:
         kb_dir = kb_cfg.get("dir", "") if kb_cfg else ""
         kb_enabled = kb_cfg.get("enabled", True) if kb_cfg else True
         kb_top_k = kb_cfg.get("top_k", 3) if kb_cfg else 3
-        kb_embed_model = kb_cfg.get("embedding_model", "paraphrase-multilingual-MiniLM-L12-v2") if kb_cfg else "paraphrase-multilingual-MiniLM-L12-v2"
-        # 默认走进程内向量库：零依赖、不用起容器。
-        # 这里给的是**代码级默认**而不是只写在 config.yaml 里 ——
-        # pc_agent/config.yaml 被 .gitignore 忽略且仓库里没有模板，
-        # 新克隆下来可能根本没有这个文件；只改配置的话"默认 local"不会真正生效。
-        # 配置里显式写了 vector_db 就以配置为准（想切回 milvus/qdrant 直接改配置）。
-        kb_vector_db = (kb_cfg.get("vector_db") if kb_cfg else None) or {"provider": "local"}
-        kb_embedding = kb_cfg.get("embedding") or None if kb_cfg else None
 
         # Agent 运行参数（可选段）。
         # 与下面 KB 段同理：pc_agent/config.yaml 被 .gitignore 忽略、仓库里没有模板，
@@ -232,9 +221,6 @@ class AgentConfig:
             knowledge_base_dir=kb_dir,
             knowledge_base_enabled=kb_enabled,
             knowledge_base_top_k=kb_top_k,
-            knowledge_base_embedding_model=kb_embed_model,
-            knowledge_base_vector_db=kb_vector_db,
-            knowledge_base_embedding=kb_embedding,
             # 以下此前**从未**从配置传入 —— yaml 里写了也不生效（配置哑变量）。
             max_iterations=agent_cfg.get("max_iterations", 10),
             history_limit=agent_cfg.get("history_limit", 20),

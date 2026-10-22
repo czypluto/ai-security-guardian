@@ -111,7 +111,7 @@ $ python agent_cli.py "全面扫描我的网络安全"
 │  │  └─────────┘ └──────────┘ └──────────┘ └───────────┘  │  │
 │  │                                                        │  │
 │  │  MCP Client (外部工具) / MCP Server Mode (暴露给外部)    │  │
-│  │  Knowledge Base (进程内向量检索 + 中文 BM25，RRF 融合)    │  │
+│  │  Knowledge Base (Markdown 事实源 + 中文 BM25 检索)         │  │
 │  └────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -180,20 +180,15 @@ $ python agent_cli.py "全面扫描我的网络安全"
   > 技能包里的 `references/*.md` 资料文件也走这条规则。
 
 ### 🧠 知识库系统
-- ✅ **向量存储** — **默认进程内**（纯 Python 暴力余弦，零第三方依赖、不用起容器）；
-  语料涨到几千条以上可切回 Milvus / Qdrant（客户端-服务端）
-- ✅ **Embedding** — transformers 直载 WeMM-Embedding-2B（OpenAI 兼容 `/v1/embeddings`，1024 维）
-- ✅ **中文关键词路** — 自研 CJK bigram BM25，与向量路 RRF 融合
-- ✅ **优雅降级** — 嵌入服务不可达时自动退回关键词检索，绝不崩溃
+- ✅ **纯中文 BM25** — 自研 CJK bigram 分词 + BM25，精确命中进程名、端口号、CVE 编号等术语
+- ✅ **Markdown 事实源** — 对话存为可读的 `.md`，索引是进程内派生物，删掉可按需重建
+- ✅ **零外部服务** — 不需要嵌入模型、GPU、向量库或容器；启动即可用
+- ✅ **可解释** — 命中就是词面命中，不需要排查“向量为什么没召回”
 - ✅ **越用越聪明** — 每次对话自动积累，检索结果注入新对话
 
-> **默认不需要启动任何服务** —— 嵌入服务在首次使用时按需拉起（`scripts/run_embed.sh`）。
-> 只有切回 Milvus / Qdrant 时才需要额外起容器：
-> ```bash
-> bash scripts/start_vector_db.sh          # Milvus + Qdrant 容器（可选）
-> ```
-
-![知识库RAG流程图](images/11_知识库RAG流程图.drawio.png)
+> 本项目刻意不做向量检索：语料是本地单人的几十~几千条对话，
+> BM25 的词面召回更贴合安全场景，也省掉了嵌入模型的显存与冷启动成本。
+> 嵌入模型与向量库只保留在另一个 RAG 项目中，本项目不加载、不连接。
 
 ![知识库ER图](images/12_知识库ER图.drawio.png)
 
@@ -387,9 +382,7 @@ python -m venv .venv
 # 安装依赖
 pip install -r pc_agent/requirements.txt
 
-# 知识库开箱可用：默认进程内向量检索，不需要额外装 SDK
-# 仅当要切回 Milvus / Qdrant 时才需要：
-# pip install pymilvus qdrant-client
+# 知识库开箱可用：Markdown + 中文 BM25，不需要额外装 SDK 或起服务
 ```
 
 > 📌 一键安装脚本在 `edge/installer/setup.bat`（86 行，可用）。它会检查 Python、
@@ -484,10 +477,8 @@ ai-security-guardian/
 │   ├── esp32_isolation.py             #   ESP32 网络隔离守护
 │   ├── download_scanner.py            #   下载前置安全扫描
 │   ├── skill_loader.py                #   .md 技能自动加载
-│   ├── knowledge_base.py              #   知识库 (向量 + 中文 BM25, RRF)
-│   ├── bm25.py                        #   CJK bigram BM25 与 RRF 融合
-│   ├── vector_store.py                #   向量库适配 (进程内/Milvus/Qdrant)
-│   ├── embed_service.py               #   本地嵌入服务按需启停
+│   ├── knowledge_base.py              #   知识库 (Markdown + 中文 BM25)
+│   ├── bm25.py                        #   CJK bigram BM25
 │   ├── defender_tools.py              #   Defender + NVD CVE
 │   ├── otx_tools.py                   #   AlienVault OTX 威胁情报
 │   ├── web_tools.py                   #   DuckDuckGo 搜索 + 抓取
@@ -529,11 +520,10 @@ ai-security-guardian/
 │   ├── test_readme_paths.py           #   校验本文件里的路径真的存在
 │   └── ...                            #   pc_agent 各模块
 │
-├── scripts/                           # 🔧 嵌入服务与向量库启停脚本
+├── scripts/                           # 🔧 辅助脚本
 │
 ├── knowledge_base/                    # 🧠 本地知识库 (不入库)
-│   ├── conversations/                 #   Markdown 对话文件 (事实源)
-│   └── vector_meta.json               #   向量库元信息
+│   └── conversations/                 #   Markdown 对话文件 (事实源)
 │
 ├── data/                              # 🔒 图状态 SQLite (不入库)
 │
@@ -673,8 +663,7 @@ agent:
 | **图状态持久化** | SQLite (langgraph-checkpoint-sqlite) | 崩溃后可按 thread_id 续跑 |
 | **桌面 GUI** | PyQt5 + QSS | 暗色极简主题 |
 | **系统托盘** | pystray + Pillow | 后台运行 |
-| **向量数据库** | 进程内（纯 Python 余弦）/ Milvus / Qdrant | 对话语义检索，默认零依赖 |
-| **Embedding** | transformers 直载 WeMM-Embedding-2B（1024 维） | OpenAI 兼容本地服务 |
+| **知识库检索** | 自研 CJK bigram BM25 | 进程内、零依赖，Markdown 为事实源 |
 | **MCP 协议** | JSON-RPC 2.0 | 工具扩展 |
 | **威胁情报** | AlienVault OTX + NIST NVD | 免费 API |
 | **搜索** | DuckDuckGo Lite | 免费无 Key |
@@ -805,7 +794,7 @@ pytest tests/ -v
 |---|---|
 | **受限令牌层 (Restricted Token)** | **经评估不做**，不是"待办"。实测：非提权进程调用 `CreateRestrictedToken` 直接返回 `ERROR_PRIVILEGE_NOT_HELD(534)`（即使 `flags=0`）——连令牌都建不出来；真正执行还需 `CreateProcessAsUser`（要 `SeAssignPrimaryTokenPrivilege`，仅管理员持有），且得用 ctypes 重写一遍进程创建（管道、环境块）。写一堆无法在本机验证的提权代码，正是这个项目一直在清理的那类问题。当前用 Job Object + 命令白名单覆盖主要风险 |
 | **文件写入守卫** | `ALLOWED_WRITE_PATHS` 已删除 —— 定义了但零引用的常量容易让人误以为有这层防护 |
-| **嵌入服务** | 冷启动要加载模型（实测约 20s）；不可达时检索自动降级为纯中文 BM25 |
+| **知识库检索** | 纯中文 BM25：强于精确术语，弱于同义改写/跨语言检索。本项目不做向量召回，也不依赖任何嵌入服务 |
 | **SQLite 检查点** | 用 `sqlite-vec` 扩展；个别精简版 Python 可能装不上，届时自动降级为内存模式（重启不可续跑） |
 | **平台** | 仅 Windows。`pywin32` / `ctypes.windll` / PowerShell 大量使用，Linux/macOS 需要移植 |
 | **技能触发匹配** | 启发式而非语义匹配：连续子串优先，中文允许字符按序散落（「扫描我的网络」能命中 `network_scan`），两字触发词只做连续匹配。没有做分词或向量相似度 |
@@ -839,7 +828,6 @@ MIT License — 自由使用、修改、分发
 - ESP32 & Arduino 社区
 - Adafruit SSD1306 / GFX 驱动库
 - psutil 系统监控库
-- Milvus / Qdrant 向量数据库（可选后端）
 - AlienVault OTX 免费威胁情报
 - NIST NVD 免费漏洞数据库
 - PyQt5 桌面框架

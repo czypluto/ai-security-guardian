@@ -15,7 +15,7 @@
 4. [AI Agent 层 — ReAct 智能大脑](#4-ai-agent-层--react-智能大脑)
 5. [ESP32 固件层 — 硬件终端](#5-esp32-固件层--硬件终端)
 6. [用户界面层](#6-用户界面层)
-7. [知识库系统 — 向量化对话记忆](#7-知识库系统--向量化对话记忆)
+7. [知识库系统 — 中文 BM25 对话记忆](#7-知识库系统--中文-bm25-对话记忆)
 8. [Skills 技能系统](#8-skills-技能系统)
 9. [MCP 协议支持](#9-mcp-协议支持)
 10. [安全沙箱设计](#10-安全沙箱设计)
@@ -35,7 +35,7 @@
 - 🤖 **AI 驱动分析** — DeepSeek v4 pro 大模型，25 个安全工具可通过 function calling 调用
 - 📟 **物理终端** — ESP32 + OLED 屏幕，显示颜文字角色"安小盾"的表情和台词
 - 💬 **桌面 GUI** — PyQt5 暗色极简主题，实时仪表盘 + AI 对话窗口（支持工具调用可视化）
-- 🧠 **向量知识库** — ChromaDB + TF-IDF 后备，自动保存对话并支持语义检索
+- 🧠 **本地知识库** — Markdown 存档 + 中文 BM25，自动保存对话并按词面精确检索
 - 🔌 **MCP 协议** — 既可作为 Client 连接外部工具，也可作为 Server 暴露自身能力
 - 📦 **Skills 技能系统** — 拖放 .md 文件即可扩展 Agent 能力
 - 🔒 **多层安全沙箱** — 命令白名单 + Job Object + Restricted Token + 审计日志
@@ -47,7 +47,7 @@
 这个项目的目标是做一个**开源、透明、有温度**的安全守护系统：
 - 通过"安小盾"让安全监控变得有趣
 - 通过大模型让安全分析变得智能
-- 通过本地向量知识库实现越用越聪明
+- 通过本地知识库实现越用越聪明
 - 通过 MCP 协议实现能力无限扩展
 - AI 可以主动调用工具获取实时数据，而非凭空猜测
 
@@ -426,25 +426,28 @@ UI 显示:
 
 ---
 
-## 7. 知识库系统 — 向量化对话记忆
+## 7. 知识库系统 — 中文 BM25 对话记忆
 
 ### 7.1 架构 `agent/knowledge_base.py`
 
 ```
 knowledge_base/
-├── conversations/        # Markdown 对话文件
-└── chroma/              # ChromaDB 向量数据库
+└── conversations/        # Markdown 对话文件（事实源）
 ```
 
-### 7.2 三级 Embedding 降级
+Markdown 是唯一事实源；BM25 索引是进程内派生物，语料变动时懒重建。
 
-| 优先级 | 引擎 | 依赖 | 说明 |
-|---|---|---|---|
-| L1 | `paraphrase-multilingual-MiniLM-L12-v2` | torch | 中英双语 SOTA |
-| L2 | ONNX `all-MiniLM-L6-v2` | onnxruntime | 无需 CUDA DLL |
-| L3 | TF-IDF 纯 Python | 零依赖 | 关键词匹配兜底 |
+### 7.2 为什么是纯 BM25
 
-当 torch/sentence-transformers 不可用时自动降级。
+| 维度 | 纯 BM25（当前） | 向量检索（已移除） |
+|---|---|---|
+| 召回方式 | CJK bigram 词面匹配 | 嵌入向量余弦相似 |
+| 依赖 | 零，纯 Python | 嵌入模型 + GPU + 向量库 |
+| 优势 | 进程名、端口、CVE 编号等精确 token | 同义改写、跨语言 |
+| 启动成本 | 毫秒级 | 模型冷启动 20~90s |
+
+语料是本地单人积累的几十~几千条对话，精确词面召回更贴合安全场景；
+向量模型与向量库只保留在另一个 RAG 项目中，本项目不加载、不连接。
 
 ---
 
@@ -598,8 +601,7 @@ Client                          Server
 | **桌面 GUI** | PyQt5 + QSS | 暗色极简主题 |
 | **ReAct 对话** | chat_window.py → LLMWorker | Think→Act→Observe 循环 |
 | **系统托盘** | pystray + Pillow | CLI 模式后台 |
-| **向量数据库** | ChromaDB | 对话语义检索 |
-| **Embedding** | sentence-transformers / ONNX / TF-IDF | 三级降级 |
+| **知识库检索** | 自研 CJK bigram BM25 | 进程内、零依赖，Markdown 为事实源 |
 | **MCP 协议** | JSON-RPC 2.0 | Client + Server |
 | **威胁情报** | AlienVault OTX + NIST NVD | 免费 API |
 | **搜索** | DuckDuckGo Lite | 免费无 Key |
@@ -647,7 +649,7 @@ ai-security-guardian/
 │   ├── mcp_server_mode.py             #   MCP Server 模式
 │   ├── sandbox.py                     #   6 层安全沙箱
 │   ├── skill_loader.py                #   .md 技能自动加载
-│   ├── knowledge_base.py              #   向量知识库 (ChromaDB)
+│   ├── knowledge_base.py              #   知识库 (Markdown + 中文 BM25)
 │   ├── defender_tools.py              #   Defender + NVD CVE
 │   ├── otx_tools.py                   #   AlienVault OTX 威胁情报
 │   ├── web_tools.py                   #   DuckDuckGo 搜索 + 抓取
@@ -684,8 +686,7 @@ ai-security-guardian/
 │   └── tools/                         #   辅助工具
 │
 ├── knowledge_base/                    # 🧠 本地知识库
-│   ├── conversations/                 #   Markdown 对话文件
-│   └── chroma/                        #   ChromaDB 向量数据
+│   └── conversations/                 #   Markdown 对话文件（事实源）
 │
 └── .venv/                             # 🐍 Python 虚拟环境
 ```
@@ -697,7 +698,6 @@ ai-security-guardian/
 - ESP32 & Arduino 社区
 - Adafruit SSD1306 驱动库
 - psutil 系统监控库
-- ChromaDB 向量数据库
 - AlienVault OTX 免费威胁情报
 - NIST NVD 免费漏洞数据库
 - DeepSeek、智谱 AI、硅基流动

@@ -26,7 +26,6 @@ DIAGRAMS = [
     {"file": "04_ReAct核心循环流程图.drawio.png",      "caption": "图5-4  ReAct核心循环流程图",        "search": "5.2.2  工具注册表",             "replace": False},
     {"file": "09_MCP协议交互时序图.drawio.png",        "caption": "图5-5  MCP协议交互时序图",          "search": "5.2.3  安全沙箱",              "replace": False},
     {"file": "05_安全沙箱6层防护架构图.drawio.png",     "caption": "图5-6  安全沙箱6层防护架构图",       "search": "5.3  ESP32",                "replace": False},
-    {"file": "11_知识库RAG流程图.drawio.png",          "caption": "图5-7  知识库RAG流程图",            "search": "5.3  ESP32",                "replace": False},
     {"file": "06_PC与ESP32通信时序图.drawio.png",      "caption": "图5-8  PC与ESP32通信时序图",        "search": "5.4  ",                     "replace": False},
 ]
 

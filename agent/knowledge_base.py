@@ -1,118 +1,36 @@
 """
-Knowledge Base — 本地知识库 (RAG)
+Knowledge Base — 本地知识库（纯 BM25 关键词检索）
 
 功能:
   - 对话保存为 Markdown 文件（**事实源**，索引丢了也能重建）
-  - 向量化存储（默认**进程内**，零依赖；可配置 Milvus / Qdrant）
-  - 语义检索历史对话
-  - 为 LLM 构建上下文增强提示
+  - 按 Q&A 切块，构建中文 BM25 索引
+  - 检索历史对话，为 LLM 构建上下文增强提示
 
-嵌入:
-  - 本地 WeMM-Embedding-2B，由 scripts/embed_server.py 以 transformers 直载（int8 GPU），
-    暴露 OpenAI 兼容的 /v1/embeddings；按需启停见 agent/embed_service.py
-  - 嵌入服务不可用时**只有关键词路**（没有向量语义召回）。
-    曾经写过一个 TF-IDF 后备类，但它既没实现 `__call__` 也从没被 fit 过、
-    且该分支下向量路根本不进 —— 运行时不可达，已删除。见 _create_embedding_fn。
-
-检索:
-  - 向量路（默认进程内；可切 Milvus / Qdrant）+ 中文 BM25 关键词路，
-    两路 RRF 融合（见 agent/bm25.py）
+为什么没有向量检索:
+  - 语料是本地单人积累的几十~几千条对话，BM25 的精确词面召回更贴合
+    安全场景里的进程名、端口号、CVE 编号这类 token；
+  - 向量路要额外拉起嵌入模型（GPU 显存、20~90s 冷启动），
+    在这个数据规模上收益与运维成本不匹配；
+  - 索引是派生物：Markdown 永远是真源，删掉重建即可。
 
 架构:
   knowledge_base/
-  ├── conversations/     # Markdown 对话文件 (始终保留)
-  └── vector_meta.json   # 向量库元信息 (集合名/维度/provider)
+  └── conversations/     # Markdown 对话文件 (始终保留)
 
-线程安全: 嵌入服务与向量库均为网络客户端（或进程内），可后台线程安全调用。
-ChromaDB 因 Rust 绑定在后台线程段错误而弃用。
+线程安全: BM25 索引是进程内纯 Python 结构，可后台线程安全调用。
 """
 from __future__ import annotations
 
 import json
 import logging
-import re
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import requests
-
-from .bm25 import Bm25Index, rrf_scores
+from .bm25 import Bm25Index
 
 logger = logging.getLogger("Guardian.KB")
-
-
-# 本地嵌入（OpenAI 兼容 /v1/embeddings）
-
-class HttpEmbeddingFunction:
-    """调用本地嵌入服务（scripts/embed_server.py，WeMM-Embedding-2B）。
-
-    HTTP 契约与 OpenAI /v1/embeddings 一致——所以服务端从 vLLM 换成 transformers
-    对这里没有影响，调用方一行都不用改。
-
-    线程安全：纯 HTTP 请求；超时短，服务不可达时快速失败。
-    """
-
-    def __init__(self, url: str = "http://localhost:8099",
-                 model: str = "WeMM-Embedding-2B", timeout: float = 120.0):
-        self.url = url.rstrip("/")
-        self.model = model
-        self.timeout = timeout
-
-    def __call__(self, input):
-        # 按需启动：服务不在则拉起并等待就绪（模型加载实测约 20s）
-        from .embed_service import get_embed_manager
-        mgr = get_embed_manager(url=self.url)
-        if not mgr.ensure_running():
-            raise RuntimeError("嵌入服务未就绪，本次嵌入跳过")
-
-        if isinstance(input, str):
-            input = [input]
-        resp = requests.post(
-            f"{self.url}/v1/embeddings",
-            json={"model": self.model, "input": list(input)},
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        items = sorted(data.get("data", []), key=lambda x: x.get("index", 0))
-        return [item["embedding"] for item in items]
-
-
-# Embedding 工厂
-
-def _create_embedding_fn(embedding_cfg: Optional[dict] = None):
-    """创建 embedding 函数。返回 (fn, 类型)；不可用时 fn 为 None。
-
-    **没有 TF-IDF 兜底**。曾经有个 `_FallbackEmbedding`，但它：
-      - 没实现 `__call__`，而调用方一律写作 `self._embed_fn([...])` → 调用即 TypeError
-      - `fit()` 从来没有被调用过，即使能调也只会编码出全零向量
-      - 而 `_store_ready` 在 tfidf 分支恒为 False，向量路根本不走 → 永远不会触发
-    三个条件叠在一起，让这个类**运行时不可达**，只在 README 里以
-    "TF-IDF 零依赖后备"的名义出现过 —— 承诺的东西其实不存在。
-
-    删掉之后语义反而更清楚：嵌入不可用 = 没有向量路，检索退回**中文 BM25**
-    （`_bm25_search`）。那本来就是更合适的降级目标 —— CJK bigram BM25 的
-    词面召回强于哈希压缩到 384 维的 TF-IDF。
-    """
-    cfg = embedding_cfg if isinstance(embedding_cfg, dict) else {}
-    if cfg.get("enabled", True):
-        try:
-            url = cfg.get("url", "http://localhost:8099")
-            model = cfg.get("model", "WeMM-Embedding-2B")
-            timeout = float(cfg.get("timeout", 120))
-            fn = HttpEmbeddingFunction(url=url, model=model, timeout=timeout)
-            # 真实探测一次：服务没起会走按需拉起，首次需等模型加载（~20s）
-            dim = len(fn(["dim-probe"])[0])
-            logger.info("Embedding: 本地嵌入服务 (%s, dim=%s)", model, dim)
-            return fn, "transformers"
-        except Exception as e:
-            logger.warning("本地嵌入服务不可用(%s)，本次仅用中文 BM25 关键词检索", e)
-    else:
-        logger.warning("未启用本地嵌入，本次仅用中文 BM25 关键词检索")
-
-    return None, "unavailable"
 
 
 # 对话 Markdown 存储
@@ -139,8 +57,13 @@ class ConversationStore:
 
         now = datetime.now()
         timestamp = metadata.get("timestamp", now.isoformat()) if metadata else now.isoformat()
-        filename = now.strftime("%Y-%m-%d_%H%M%S") + ".md"
-        filepath = self.base_dir / filename
+        stem = now.strftime("%Y-%m-%d_%H%M%S")
+        filepath = self.base_dir / f"{stem}.md"
+        # 同一秒内连续保存会撞名：加后缀而不是覆盖，否则会静默丢历史。
+        n = 2
+        while filepath.exists():
+            filepath = self.base_dir / f"{stem}_{n}.md"
+            n += 1
 
         # 提取话题关键词
         topics = self._extract_topics(messages)
@@ -237,27 +160,14 @@ class ConversationStore:
 # 知识库
 
 class KnowledgeBase:
-    """本地知识库 — 语义检索历史对话。
+    """本地知识库 — 中文 BM25 检索历史对话。
 
-    向量存于可插拔的 VectorStore（默认**进程内**，可选 Milvus/Qdrant）；
-    Markdown 始终存于本地，是事实源。
-    向量库不可用时自动降级为关键词检索，绝不阻塞/崩溃。
+    Markdown 是事实源；BM25 索引是进程内派生物，语料变动时懒重建。
     """
 
-    def __init__(
-        self,
-        persist_dir: str = None,
-        embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2",
-        collection_name: str = "security_conversations",
-        vector_db_cfg: Optional[dict] = None,
-        embedding_cfg: Optional[dict] = None,
-    ):
+    def __init__(self, persist_dir: str = None):
         """参数:
           persist_dir: 持久化目录，默认项目根目录下的 knowledge_base/
-          embedding_model: 遗留参数（嵌入由 embedding_cfg 驱动），保留以兼容旧调用
-          collection_name: 向量集合名
-          vector_db_cfg: 向量库配置 {provider, fallback, timeout, milvus, qdrant}
-          embedding_cfg: 嵌入配置 {url, model, timeout, enabled}
         """
         if persist_dir is None:
             persist_dir = Path(__file__).parent.parent / "knowledge_base"
@@ -269,56 +179,9 @@ class KnowledgeBase:
         # Conversation store (Markdown，永远可用)
         self.store = ConversationStore(self.conversations_dir)
 
-        # Embedding（优先本地嵌入服务；不可用时降级）
-        self._embed_fn, self._embed_type = _create_embedding_fn(embedding_cfg)
-
-        # 向量库（默认进程内；可选 Milvus/Qdrant；全不可用时为 None）
-        from .vector_store import create_vector_store
-        self._store = create_vector_store(vector_db_cfg)
-        # 向量路要求「有 store」且「有可用的嵌入」二者兼备。
-        # 用 _embed_fn is not None 直接判断，而不是比字符串标签 ——
-        # 标签是给人看的，判断依据应该是对象本身在不在。
-        self._store_ready = self._store is not None and self._embed_fn is not None
-        self._vector_db_name = self._store.name if self._store else None
-        self._dim: Optional[int] = None
-        self._collection_name = collection_name
-
-        # 中文 BM25（关键词路）— 懒加载；语料变动时置 None 触发重建
+        # 中文 BM25 — 懒加载；语料变动时置 None 触发重建
         self._bm25: Optional[Bm25Index] = None
         self._bm25_chunks: Dict[str, Dict[str, Any]] = {}
-
-        # 集合初始化（维度探测 + 建/校验集合）；失败则降级，不阻塞
-        if self._store_ready:
-            try:
-                self._ensure_collection()
-            except Exception as e:
-                logger.warning("向量集合初始化失败(%s)，降级关键词检索", e)
-                self._store = None
-                self._store_ready = False
-
-    # 向量集合
-
-    def _ensure_collection(self):
-        """探测嵌入维度并确保集合存在（维度不一致时重建）。"""
-        if not self._store_ready:
-            return
-        vec = self._embed_fn(["dim-probe"])[0]
-        self._dim = int(len(vec))
-        self._store.ensure_collection(self._collection_name, self._dim)
-        self._write_vector_meta()
-
-    def _write_vector_meta(self):
-        meta = {
-            "collection_name": self._collection_name,
-            "dim": self._dim,
-            "provider": self._vector_db_name,
-            "embedding_type": self._embed_type,
-        }
-        try:
-            (self.persist_dir / "vector_meta.json").write_text(
-                json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
 
     # 写入
 
@@ -326,49 +189,17 @@ class KnowledgeBase:
                          metadata: Dict[str, Any] = None) -> Optional[str]:
         """添加对话到知识库。
 
-        1. 保存为 Markdown 文件（始终执行，向量库不可用也不影响）
-        2. 按 Q&A 分块
-        3. 向量化存储到 Milvus/Qdrant
+        1. 保存为 Markdown 文件（事实源）
+        2. 下一轮检索时按 Q&A 懒重建 BM25 索引
 
         返回: 对话 ID (文件路径 stem)
         """
-        # 1. 保存 Markdown
         md_path = self.store.save(messages, metadata)
         if md_path is None:
             return None
 
-        conv_id = md_path.stem
-
-        # 2. 分块 — 每个 Q&A 对作为一个文档
-        chunks = self._chunk_conversation(messages, conv_id)
-
-        # 3. 向量化存储（失败仅记日志，不影响 Markdown）
-        self._vectorize_chunks(conv_id, chunks, metadata or {})
-
-        self._bm25 = None  # 语料已变，关键词索引下轮懒重建
-        return conv_id
-
-    def _vectorize_chunks(self, conv_id: str, chunks: List[Dict[str, Any]],
-                          metadata: Dict[str, Any]):
-        """分块嵌入并写入向量库（吞掉异常，保证 add_conversation 永不因向量失败崩溃）。"""
-        if not self._store_ready or not chunks:
-            return
-        ids = [f"{conv_id}_{i}" for i in range(len(chunks))]
-        documents = [c["text"] for c in chunks]
-        metadatas = [{
-            "conversation_id": conv_id,
-            "timestamp": metadata.get("timestamp", ""),
-            "topics": ", ".join(c.get("topics", [])),
-            "chunk_index": i,
-            "role": c.get("role", "mixed"),
-        } for i, c in enumerate(chunks)]
-        try:
-            vectors = self._embed_fn(documents)
-            self._store.add(ids=ids, documents=documents,
-                            metadatas=metadatas, vectors=vectors)
-            logger.info("知识库已索引: %s (%s 个分块)", conv_id, len(chunks))
-        except Exception as e:
-            logger.error("向量写入失败: %s", e)
+        self._bm25 = None  # 语料已变，BM25 索引下轮懒重建
+        return md_path.stem
 
     def _chunk_conversation(self, messages: List[Dict[str, str]],
                             conv_id: str) -> List[Dict[str, Any]]:
@@ -418,9 +249,8 @@ class KnowledgeBase:
     def _ensure_bm25_index(self) -> Bm25Index:
         """懒加载**分块级** BM25 索引。
 
-        语料取自 Markdown（事实源），切块方式与向量化完全一致，因此 doc_id 就是
-        向量库里的 chunk id（``{conv_id}_{i}``）——**两路的键必须一致，RRF 才能对齐融合**。
-        语料变动（新增/删除对话、重建索引）时把 ``self._bm25`` 置 None 即触发重建。
+        语料取自 Markdown（事实源）。doc_id 为 ``{conv_id}_{i}``，
+        语料变动（新增/删除对话）时把 ``self._bm25`` 置 None 即触发重建。
         """
         if self._bm25 is not None:
             return self._bm25
@@ -448,11 +278,10 @@ class KnowledgeBase:
 
     def _bm25_search(self, query: str, top_k: int,
                      filter_topics: List[str] = None) -> List[Dict[str, Any]]:
-        """关键词路召回，返回结构与向量路保持一致。"""
+        """中文 BM25 召回，返回统一的 hit 结构。"""
         index = self._ensure_bm25_index()
         allow = None
         if filter_topics:
-            # 与向量路的 topics 过滤口径一致
             allow = [cid for cid, c in self._bm25_chunks.items()
                      if any(t in ", ".join(c.get("topics") or []) for t in filter_topics)]
         out: List[Dict[str, Any]] = []
@@ -476,93 +305,18 @@ class KnowledgeBase:
 
     def search(self, query: str, top_k: int = 5,
                filter_topics: List[str] = None) -> List[Dict[str, Any]]:
-        """混合检索：向量路 + 中文 BM25 路，**RRF 融合**。
+        """纯中文 BM25 关键词检索。
 
-        相比原来「向量可用就不看关键词、挂了才退到整篇词频扫描」的单选式检索：
-        - 两路**并行召回再融合**，向量补语义、BM25 补精确术语；
-        - 向量库不可用时自动退为「仅 BM25」，仍远强于整篇词频扫描；
-        - 两路都无结果才退到兜底实现。
-
-        返回: [{id, text, metadata, score}, ...]；融合后 score 为 RRF 分。
+        返回: [{id, text, metadata, score}, ...]；score 为 BM25 分。
         """
-        vec_hits: List[Dict[str, Any]] = []
-        if self._store_ready and self.count:
-            try:
-                qv = self._embed_fn([query])[0]
-                vec_hits = self._store.search(qv, min(top_k, self.count), filter_topics)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("向量检索失败(%s)，本次仅用关键词路", e)
-
+        if not query:
+            return []
         try:
-            kw_hits = self._bm25_search(query, top_k=max(top_k * 2, 8),
-                                        filter_topics=filter_topics)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("BM25 检索失败(%s)，本次仅用向量路", e)
-            kw_hits = []
-
-        if not vec_hits and not kw_hits:
-            return self._fallback_search(query, top_k)
-
-        # 同一分块可能两路都命中：保留字段更全的一条（向量路来自库，元数据更完整）
-        by_id: Dict[str, Dict[str, Any]] = {h["id"]: h for h in kw_hits}
-        by_id.update({h["id"]: h for h in vec_hits})
-        scores = rrf_scores([[h["id"] for h in vec_hits], [h["id"] for h in kw_hits]])
-        order = sorted(scores, key=lambda d: (-scores[d], d))
-        fused: List[Dict[str, Any]] = []
-        for cid in order[:top_k]:
-            hit = by_id.get(cid)
-            if hit:
-                # 对外给 RRF 分（两路量纲不同，直接暴露来源分会让调用方误比较）
-                fused.append({**hit, "score": round(scores[cid], 6)})
-        return fused
-
-    def _fallback_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """关键词搜索后备方案 — 扫描 Markdown 文件。"""
-        results = []
-        query_lower = query.lower()
-        query_terms = re.findall(r'[一-鿿]+|[a-z0-9]{2,}', query_lower)
-
-        for md_file in self.store.list_files():
-            try:
-                content = self.store.load(md_file)
-                content_lower = content.lower()
-
-                # 计算关键词匹配分数
-                score = 0
-                for term in query_terms:
-                    score += content_lower.count(term)
-
-                # 标题匹配加分
-                if any(term in md_file.stem.lower() for term in query_terms):
-                    score += 5
-
-                if score > 0:
-                    # 提取相关片段
-                    lines = content.split("\n")
-                    best_line_idx = 0
-                    best_line_score = 0
-                    for i, line in enumerate(lines):
-                        ls = sum(line.lower().count(t) for t in query_terms)
-                        if ls > best_line_score:
-                            best_line_score = ls
-                            best_line_idx = i
-
-                    # 取上下文片段
-                    start = max(0, best_line_idx - 3)
-                    end = min(len(lines), best_line_idx + 5)
-                    snippet = "\n".join(lines[start:end])
-
-                    results.append({
-                        "id": md_file.stem,
-                        "text": snippet[:1000],
-                        "metadata": {"source": md_file.name},
-                        "score": score,
-                    })
-            except Exception:
-                continue
-
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:top_k]
+            return self._bm25_search(query, top_k=top_k,
+                                     filter_topics=filter_topics)
+        except Exception as e:  # noqa: BLE001 - 检索失败不该让整轮报错
+            logger.warning("BM25 检索失败(%s)", e)
+            return []
 
     # 上下文构建
 
@@ -606,64 +360,24 @@ class KnowledgeBase:
     # 管理
 
     @property
-    def count(self) -> int:
-        """向量库文档总数（不可用/异常时为 0）。"""
-        if not self._store_ready:
-            return 0
-        try:
-            return self._store.count()
-        except Exception:
-            return 0
-
-    @property
     def conversation_count(self) -> int:
         """已保存对话文件数。"""
         return len(self.store.list_files())
 
     def delete_conversation(self, conv_id: str):
-        """删除对话及其向量。"""
-        if self._store_ready:
-            try:
-                self._store.delete_by_conversation(conv_id)
-            except Exception as e:
-                logger.warning("删除向量失败: %s", e)
-
-        # 删除 Markdown 文件
+        """删除对话的 Markdown 文件；下次检索时重建 BM25 索引。"""
         md_path = self.conversations_dir / f"{conv_id}.md"
         if md_path.exists():
             md_path.unlink()
             logger.info(f"已删除对话: {conv_id}")
 
-        self._bm25 = None  # 语料已变，关键词索引下轮懒重建
+        self._bm25 = None  # 语料已变，索引下轮懒重建
 
     def rebuild_index(self):
-        """从 Markdown 文件重建整个向量索引。"""
-        if not self._store_ready:
-            logger.warning("向量库不可用，无法重建索引")
-            return
-
-        # 清空并重建集合
-        try:
-            self._store.drop()
-            self._ensure_collection()
-        except Exception as e:
-            logger.warning("重建集合失败: %s", e)
-            self._store_ready = False
-            return
-
-        # 重新索引所有对话（只向量化，不重写 Markdown）
-        for md_file in self.store.list_files():
-            try:
-                content = self.store.load(md_file)
-                messages = self._parse_markdown_to_messages(content)
-                if messages:
-                    chunks = self._chunk_conversation(messages, md_file.stem)
-                    self._vectorize_chunks(md_file.stem, chunks, {})
-            except Exception as e:
-                logger.warning(f"重新索引 {md_file.name} 失败: {e}")
-
-        self._bm25 = None  # 关键词索引随之重建
-        logger.info(f"索引重建完成: {self.count} 条记录")
+        """丢弃内存索引；下次检索时从 Markdown 重建。"""
+        self._bm25 = None
+        self._bm25_chunks = {}
+        logger.info("BM25 索引已重置，下次检索时重建")
 
     def _parse_markdown_to_messages(self, content: str) -> List[Dict[str, str]]:
         """将保存的 Markdown 解析回消息列表。"""
@@ -724,10 +438,7 @@ class KnowledgeBase:
         """获取知识库统计信息。"""
         return {
             "conversations": self.conversation_count,
-            "vector_count": self.count,
             "bm25_chunks": len(self._ensure_bm25_index()) if self.conversation_count else 0,
-            "embedding_type": self._embed_type,
-            "vector_db": self._vector_db_name or "none",
             "storage_dir": str(self.conversations_dir),
             "conversations_dir": str(self.conversations_dir),
         }
@@ -739,19 +450,13 @@ _kb_instance: Optional[KnowledgeBase] = None
 _kb_lock = threading.Lock()
 
 
-def get_knowledge_base(persist_dir: str = None,
-                       vector_db_cfg: Optional[dict] = None,
-                       embedding_cfg: Optional[dict] = None) -> KnowledgeBase:
+def get_knowledge_base(persist_dir: str = None) -> KnowledgeBase:
     """获取全局知识库实例 (懒加载单例，线程安全)。"""
     global _kb_instance
     if _kb_instance is None:
         with _kb_lock:
             if _kb_instance is None:
-                _kb_instance = KnowledgeBase(
-                    persist_dir=persist_dir,
-                    vector_db_cfg=vector_db_cfg,
-                    embedding_cfg=embedding_cfg,
-                )
+                _kb_instance = KnowledgeBase(persist_dir=persist_dir)
     return _kb_instance
 
 

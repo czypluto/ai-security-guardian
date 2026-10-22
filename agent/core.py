@@ -310,7 +310,7 @@ class AgentCore:
             "mcp_servers": self.mcp.connected_servers,
             "skills": len(self.skills.list_all()),
             "skills_active": self._last_active_skill,
-            "kb_count": self.kb.count if self.kb else 0,
+            "kb_chunks": self.kb.get_stats()["bm25_chunks"] if self.kb else 0,
             "kb_convs": self.kb.conversation_count if self.kb else 0,
         }
         return result

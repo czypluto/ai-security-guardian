@@ -573,9 +573,7 @@ class ChatWindow(QDialog):
         self._is_processing = False
         self._message_widgets: list = []
 
-        # Knowledge base — 后台线程加载。
-        # 默认向量库在进程内、嵌入是本地 HTTP 服务，都可在后台线程安全调用；
-        # 服务不可达时 get_knowledge_base() 自动降级为关键词检索，绝不崩溃。
+        # Knowledge base — 后台线程加载；纯本地 Markdown + BM25，无外部服务。
         self._kb = None
         self._kb_loaded = False
         if HAS_KB:
@@ -863,9 +861,8 @@ class ChatWindow(QDialog):
         threading.Thread(target=self._kb_load_worker, daemon=True).start()
 
     def _kb_load_worker(self):
-        """后台加载 KB：嵌入服务探测 + 向量库探活，均带短超时。
+        """后台加载 KB（纯 BM25，纯本地文件，无网络探测）。
 
-        服务不可达时 get_knowledge_base() 自动降级（关键词检索），
         绝不让 GUI 卡住或崩溃。
         """
         try:
@@ -873,15 +870,12 @@ class ChatWindow(QDialog):
             from agent.knowledge_base import get_knowledge_base
 
             cfg = AgentConfig.from_config_file(str(Path(__file__).parent / "config.yaml"))
-            kb = get_knowledge_base(
-                persist_dir=cfg.knowledge_base_dir or None,
-                vector_db_cfg=cfg.knowledge_base_vector_db,
-                embedding_cfg=cfg.knowledge_base_embedding,
-            )
+            kb = get_knowledge_base(persist_dir=cfg.knowledge_base_dir or None)
             self._kb = kb  # GIL 原子赋值
+            stats = kb.get_stats()
             self.logger.info(
-                f"知识库已加载: {kb.conversation_count} 对话, {kb.count} 向量, "
-                f"嵌入={kb._embed_type}, 向量库={kb._vector_db_name}")
+                f"知识库已加载: {stats['conversations']} 对话, "
+                f"{stats['bm25_chunks']} 个 BM25 分块")
         except Exception as e:
             self.logger.debug(f"知识库加载失败: {e}")
             self._kb = None

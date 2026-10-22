@@ -83,7 +83,7 @@ jobs:
       - name: Install dependencies
         run: |
           poetry install \
-            --without tray,gui,kb \
+            --without tray,gui \
             --no-interaction \
             --no-ansi
 
@@ -174,7 +174,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install --without tray,gui,kb --no-interaction --no-ansi
+          poetry install --without tray,gui --no-interaction --no-ansi
 
       - name: Ruff Lint
         run: poetry run ruff check . --output-format=github

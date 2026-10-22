@@ -300,10 +300,9 @@ class TestDefaultSystemPrompt:
         assert ".env" in prompt or "API credentials" in prompt
 
 
-# ---- 向量库默认值 ----
-# 这几条锁的是「默认进程内」这个决定必须落在**代码**里而不是只写在配置文件里：
+# ---- 知识库默认值 ----
+# 这些默认值必须落在**代码**里而不是只写在配置文件里：
 # pc_agent/config.yaml 被 .gitignore 忽略且仓库无模板，新克隆可能根本没有该文件。
-# 只改配置的话，「默认 local」不会真正生效，用户会静默退化成纯关键词检索。
 
 def _write_cfg(tmp_path, kb_section):
     import yaml
@@ -320,21 +319,18 @@ def _write_cfg(tmp_path, kb_section):
     return str(path)
 
 
-class TestVectorDbDefault:
-    def test_missing_knowledge_base_section_defaults_to_local(self, tmp_path):
+class TestKnowledgeBaseDefaults:
+    def test_missing_knowledge_base_section_defaults_enabled(self, tmp_path):
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
             cfg = AgentConfig.from_config_file(_write_cfg(tmp_path, None))
-        assert cfg.knowledge_base_vector_db == {"provider": "local"}
-
-    def test_missing_vector_db_key_defaults_to_local(self, tmp_path):
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
-            cfg = AgentConfig.from_config_file(_write_cfg(tmp_path, {"enabled": True}))
-        assert cfg.knowledge_base_vector_db == {"provider": "local"}
+        assert cfg.knowledge_base_enabled is True
+        assert cfg.knowledge_base_top_k == 3
 
     def test_explicit_config_wins(self, tmp_path):
-        """想切回 Milvus 时，显式配置必须盖过默认值。"""
-        section = {"enabled": True, "vector_db": {"provider": "milvus", "fallback": "qdrant"}}
+        section = {"enabled": False, "top_k": 5, "dir": "custom_kb"}
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
             cfg = AgentConfig.from_config_file(_write_cfg(tmp_path, section))
-        assert cfg.knowledge_base_vector_db["provider"] == "milvus"
+        assert cfg.knowledge_base_enabled is False
+        assert cfg.knowledge_base_top_k == 5
+        assert cfg.knowledge_base_dir == "custom_kb"
 

@@ -1,6 +1,6 @@
-"""测试 agent/bm25.py 与知识库的混合检索（向量路 + 中文 BM25 路 + RRF 融合）。
+"""测试 agent/bm25.py 与知识库的中文 BM25 检索。
 
-全部离线：不起 Milvus/Qdrant/vLLM，嵌入显式关闭，走纯 Python 的 BM25 路径。
+全部离线：不依赖任何嵌入服务或向量库，纯 Python BM25。
 """
 from __future__ import annotations
 
@@ -141,14 +141,13 @@ topics: ["威胁情报"]
 
 
 def _kb(tmp_path):
-    """构造一个没有向量库的知识库——正是 Milvus/Qdrant 没起时的真实状态。"""
+    """构造一个纯 BM25 知识库（Markdown 为事实源，无任何外部服务）。"""
     from agent.knowledge_base import KnowledgeBase
     d = tmp_path / "conversations"
     d.mkdir(parents=True)
     (d / "2026-08-01_100000.md").write_text(_MD_1, encoding="utf-8")
     (d / "2026-08-01_110000.md").write_text(_MD_2, encoding="utf-8")
-    return KnowledgeBase(persist_dir=str(tmp_path),
-                         embedding_cfg={"enabled": False})  # 不探测 vLLM，走纯离线
+    return KnowledgeBase(persist_dir=str(tmp_path))
 
 
 def test_bm25_index_is_built_from_markdown(tmp_path):
@@ -156,10 +155,9 @@ def test_bm25_index_is_built_from_markdown(tmp_path):
     assert len(kb._ensure_bm25_index()) == 2  # 每个文件一个 Q&A 分块
 
 
-def test_search_still_hits_without_vector_store(tmp_path):
-    """向量库不可用时检索仍应命中——这是依赖服务没起时的真实场景。"""
+def test_search_hits_from_markdown(tmp_path):
+    """纯 BM25 检索：只依赖 Markdown，不需要任何外部服务。"""
     kb = _kb(tmp_path)
-    assert kb._store_ready is False
     hits = kb.search("netsh advfirewall", top_k=3)
     assert hits
     assert "netsh" in hits[0]["text"]

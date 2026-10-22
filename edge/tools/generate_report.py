@@ -369,7 +369,7 @@ body('本实训项目设计并实现了一个集 ESP32 嵌入式硬件、Windows
      '进程行为、防火墙状态和系统资源，并通过 JSON over Serial 协议将安全状态推送至'
      'ESP32 + OLED 显示屏的物理终端设备。同时，系统集成了多模型 LLM 客户端'
      '（支持 DeepSeek、智谱 AI、硅基流动），由二次元角色"安小盾"以表情和台词形式'
-     '进行交互反馈。项目还实现了内置向量检索（向量 + 中文 BM25，RRF 融合）的知识库、MCP 协议支持、Skills '
+     '进行交互反馈。项目还实现了基于纯中文 BM25 的知识库、MCP 协议支持、Skills '
      '技能系统和多层安全沙箱等高级功能。测试结果表明，系统能够准确检测常见网络安全威胁，'
      '实时性良好，达到了设计目标。')
 
@@ -421,7 +421,7 @@ toc_entries = [
     ('2.1  ESP32 嵌入式开发', 2),
     ('2.2  Windows 系统监控技术', 2),
     ('2.3  大模型 API 与 AI Agent', 2),
-    ('2.4  MCP 协议与向量知识库', 2),
+    ('2.4  MCP 协议与知识库', 2),
     ('3  系统分析', 1),
     ('3.1  可行性分析', 2),
     ('3.2  需求分析', 2),
@@ -516,7 +516,7 @@ body('（1）PC Agent 安全监控引擎：实现对 Windows 系统网络连接�
      '安全事件日志、CPU/内存资源的实时监控，支持多级安全等级评估。', indent=True)
 
 body('（2）AI Agent 智能大脑：基于 ReAct（Reasoning + Acting）范式，集成25+安全工具，'
-     '支持大模型驱动的自动化威胁分析、MCP协议扩展、Skills技能热加载、向量知识库检索增强。', indent=True)
+     '支持大模型驱动的自动化威胁分析、MCP协议扩展、Skills技能热加载、知识库检索增强。', indent=True)
 
 body('（3）ESP32 嵌入式固件：实现基于 Arduino 框架的 OLED 双屏显示系统'
      '（颜文字角色屏+安全仪表盘），支持按键切换、蜂鸣器/RGB LED告警、'
@@ -541,7 +541,7 @@ doc.add_page_break()
 heading1('2  相关理论与技术')
 
 body('本章介绍AI网络安全管家项目所涉及的关键技术和理论基础，'
-     '包括ESP32嵌入式开发、Windows系统监控、大模型API调用、MCP协议与向量知识库等。', indent=True)
+     '包括ESP32嵌入式开发、Windows系统监控、大模型API调用、MCP协议与知识库等。', indent=True)
 
 heading2('2.1  ESP32 嵌入式开发')
 
@@ -603,18 +603,18 @@ body('（4）ReAct范式：AI Agent的核心采用ReAct（Reasoning + Acting）�
      '即Think→Act→Observe→Repeat。每轮迭代LLM可以选择调用工具或返回文本回复，'
      '最多10轮迭代。工具调用通过OpenAI function calling机制实现。', indent=True)
 
-heading2('2.4  MCP 协议与向量知识库')
+heading2('2.4  MCP 协议与知识库')
 
 body('MCP（Model Context Protocol）是由Anthropic发布的开放协议标准（2024-11-05），'
      '定义了AI应用与外部工具/数据源之间的标准化通信方式。本系统同时实现了MCP Client'
      '和MCP Server两种角色。作为Client，可通过JSON-RPC 2.0协议连接外部MCP服务器，'
      '自动发现并调用其工具。作为Server，可将自身的安全工具暴露给外部客户端（如Claude Code）使用。', indent=True)
 
-body('向量知识库默认使用**进程内**向量索引（纯 Python 暴力余弦检索，零第三方依赖、'
-     '无需另起服务），也可配置为 Milvus / Qdrant 作为后端。嵌入由本地 transformers 直载的 '
-     'WeMM-Embedding-2B 模型（1024 维）提供，对外暴露 OpenAI 兼容的 /v1/embeddings。'
-     '嵌入服务不可达时，系统自动降级为中文 BM25 关键词检索。知识库存储对话历史并'
-     '支持语义检索，在每次对话前将相关知识注入系统提示词，实现检索增强生成（RAG）。', indent=True)
+body('知识库采用**纯中文 BM25** 检索：对话保存为 Markdown（事实源），'
+     '按 Q&A 切块后在进程内构建 CJK bigram 索引，零第三方依赖、无需任何外部服务。'
+     '选择 BM25 而非向量检索，是因为语料规模是本地单人的几十~几千条对话，'
+     '而安全场景大量出现进程名、端口号、CVE 编号等精确 token，词面召回比语义近似更可靠。'
+     '知识库在每次对话前将相关历史注入系统提示词，实现检索增强。', indent=True)
 
 doc.add_page_break()
 
@@ -687,7 +687,7 @@ body('（2）PC监控层（PC Agent）：运行在Windows PC上，包括Guardian
 body('（3）AI Agent层：包括ReAct核心循环（AgentCore）、多模型LLM路由（LLMRouter）、'
      '25+工具注册表（ToolRegistry）、MCP客户端/服务端（MCPManager/GuardianMCPServer）、'
      '技能加载器（SkillManager）、安全沙箱（Sandbox）、威胁情报（OTX/NVD）、'
-     '向量知识库（KnowledgeBase）等模块。', indent=True)
+     '知识库（KnowledgeBase）等模块。', indent=True)
 
 body('（4）用户界面层：提供4种交互模式——CLI命令行、PyQt5桌面GUI（DesktopGUI + ChatWindow）、'
      'Flask Web Dashboard、系统托盘（SystemTray）。所有界面共享同一GuardianController实例。', indent=True)
@@ -706,7 +706,7 @@ modules = [
     ('AI智能模块', 'LLM多模型客户端、ReAct Agent引擎、安全分析、威胁解释、角色对话'),
     ('设备通信模块', 'Serial/WiFi双模连接、自动COM口检测、心跳保活、断连恢复'),
     ('角色系统模块', '8种表情映射、12类60+句台词库、LLM动态台词、自定义角色导入'),
-    ('知识库模块', '内置向量检索 + 中文BM25关键词路（RRF融合）、本地嵌入、对话保存'),
+    ('知识库模块', 'Markdown 对话存档 + 中文 BM25 检索、话题提取、上下文注入'),
     ('扩展能力模块', 'MCP Client/Server、Skills技能热加载、Web搜索、威胁情报查询'),
     ('用户界面模块', 'PyQt5桌面GUI、AI对话窗口、CLI Agent、系统托盘'),
 ]
@@ -727,16 +727,14 @@ figure_caption('图4-2  系统主流业务流程图')
 
 heading2('4.4  数据库设计')
 
-body('本系统的数据存储主要包括两个方面：一是通过向量索引存储对话历史和知识片段的嵌入，'
-     '默认落在进程内的索引文件中（可切换 Milvus/Qdrant），'
-     '二是通过Markdown文件存储知识库对话记录（Markdown 是事实源，索引可由它重建）。由于系统以实时监控为主，'
+body('本系统的持久化数据主要是知识库对话记录：每条对话保存为 Markdown 文件，'
+     'Markdown 是唯一事实源。检索索引（CJK bigram BM25）是进程内派生物，'
+     '语料变动时按需重建，不做持久化。由于系统以实时监控为主，'
      '不涉及复杂的业务数据关系，因此不设计传统的关系型数据库ER模型。', indent=True)
 
-body('向量库中存储的向量数据结构包括：对话ID（自动生成UUID）、对话内容（文本）、'
-     '向量嵌入（1024维浮点数组）、元数据（时间戳、对话角色、主题标签）。'
-     '知识库目录结构为：knowledge_base/conversations/（Markdown对话文件，事实源）+ '
-     'knowledge_base/.vector_index.json（进程内向量索引，可由 Markdown 重建；'
-     '切换 Milvus/Qdrant 时向量本体才存于服务端）。', indent=True)
+body('知识库目录结构为：knowledge_base/conversations/（Markdown 对话文件，事实源）。'
+     '每个文件包含 frontmatter（时间戳、消息数、主题标签）与逐条 Q&A 正文；'
+     '检索时按 Q&A 切块，在内存中构建 BM25 索引。', indent=True)
 
 doc.add_page_break()
 
@@ -837,7 +835,7 @@ body('（1）PyQt5桌面GUI（desktop_gui.py, 901行）：极简暗色主题（#
      '系统托盘图标动态变色（绿/黄/红），关闭窗口自动隐藏到托盘。', indent=True)
 
 body('（2）AI对话窗口（chat_window.py, 1239行）：流式输出对话、5个快速操作按钮'
-     '（快速扫描/病毒检测/漏洞检查/安全报告/修复建议）、知识库检索增强（RAG）、'
+     '（快速扫描/病毒检测/漏洞检查/安全报告/修复建议）、知识库检索增强、'
      '对话保存确认、30秒看门狗防卡死。', indent=True)
 
 body('（3）CLI Agent（agent_cli.py, 315行）：交互式对话模式、单次查询模式、'
@@ -1001,8 +999,8 @@ body('（3）安全机制（沙箱命令白名单、设备断连恢复、LLM故�
      '在异常场景下表现正确。', indent=True)
 
 body('（4）已知限制：安全事件日志读取和进程终止操作需要管理员权限；'
-     'LLM分析和搜索功能需要互联网连接；本地嵌入服务首次使用时按需拉起（需加载模型，约20s），'
-     '未就绪时检索自动降级为关键词路；向量库默认进程内，无需额外启动。', indent=True)
+     'LLM分析和搜索功能需要互联网连接；知识库采用纯中文 BM25，'
+     '强于精确术语、弱于同义改写与跨语言检索，但不依赖任何外部服务。', indent=True)
 
 doc.add_page_break()
 
@@ -1018,7 +1016,7 @@ body('项目的主要成果包括：（1）实现了实时Windows安全监控引
      '支持多级安全等级评估和降级策略；（2）构建了基于ReAct范式的AI Agent，集成25+安全工具'
      '和MCP协议，具备强大的可扩展性；（3）开发了ESP32 OLED双屏固件，以极低成本（~33元）'
      '实现了物理安全终端；（4）设计了二次元角色"安小盾"的表情台词系统，'
-     '通过LLM驱动实现智能交互；（5）实现了零依赖的内置向量检索（与中文BM25做RRF融合）、'
+     '通过LLM驱动实现智能交互；（5）实现了零依赖的中文 BM25 检索、'
      'Skills技能系统和多层安全沙箱等高级特性。', indent=True)
 
 body('在项目开发过程中，遇到并解决了多个关键技术问题：'
@@ -1067,11 +1065,8 @@ refs = [
     '[7] 智谱AI. GLM大模型API文档[EB/OL]. '
     'https://open.bigmodel.cn/dev/api, 2024.',
 
-    '[8] Chroma. Chroma: the AI-native open-source embedding database[EB/OL]. '
-    'https://github.com/chroma-core/chroma, 2024.',
-
-    '[9] Reimers N, Gurevych I. Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks[C]. '
-    'Proceedings of EMNLP-IJCNLP, 2019: 3982-3992.',
+    '[8] Robertson S, Zaragoza H. The Probabilistic Relevance Framework: BM25 and Beyond[J]. '
+    'Foundations and Trends in Information Retrieval, 2009, 3(4): 333-389.',
 
     '[10] Lu C, Lange R T, Yamada Y, et al. Towards end-to-end automation of AI research[J]. '
     'Nature, 2026, 651(8107): 914-919.',
@@ -1132,11 +1127,9 @@ deps = [
     ('pywin32', 'Windows EventLog API'),
     ('requests', 'LLM HTTP客户端'),
     ('PyYAML', '配置文件解析'),
-    ('transformers', '本地嵌入服务 (WeMM-Embedding-2B, scripts/embed_server.py)'),
     ('pystray', '系统托盘'),
     ('pytest', '单元测试框架'),
     ('python-docx', 'DOCX文档生成'),
-    ('pymilvus / qdrant-client', '向量数据库（可选后端；默认用进程内实现，无需安装）'),
 ]
 for name, desc in deps:
     body(f'{name} — {desc}', indent=True)

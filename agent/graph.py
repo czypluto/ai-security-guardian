@@ -254,9 +254,8 @@ def extract_interrupts(update: Any) -> list:
 def _retrieve_kb_context(kb, query: str, top_k: int, timeout: float) -> str:
     """取知识库上下文，带超时预算。
 
-    超时预算的存在是因为嵌入服务冷启动要加载模型（实测约 20s）；
-    没有它，第一次提问会被拖到用户以为程序卡死。超时后返回空串，
-    退回「本轮没有 KB 上下文」，绝不阻塞。
+    BM25 检索通常毫秒级；保留预算用于兜底异常磁盘 I/O 或索引重建，
+    超时后返回空串，退回「本轮没有 KB 上下文」，绝不阻塞。
     """
     if kb is None or not query:
         return ""

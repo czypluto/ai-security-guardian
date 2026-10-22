@@ -71,8 +71,8 @@ def print_banner(agent: AgentCore):
     print()
     print(f"  MCP Servers: \033[35m{s['mcp_servers']}\033[0m")
     print(f"  Skills:      \033[36m{s['skills']} loaded\033[0m")
-    if s.get('kb_count', 0) > 0:
-        print(f"  Knowledge:   \033[35m{s['kb_count']} docs, {s.get('kb_convs', 0)} convs\033[0m")
+    if s.get('kb_chunks', 0) > 0:
+        print(f"  Knowledge:   \033[35m{s['kb_chunks']} BM25 chunks, {s.get('kb_convs', 0)} convs\033[0m")
     print("  \033[90m─────────────────────────────────────────\033[0m")
     print()
 
@@ -241,16 +241,11 @@ def run_chat_mode(agent: AgentCore):
                     print()
                     print("  \033[1mKnowledge Base:\033[0m")
                     print(f"  Conversations: {stats['conversations']}")
-                    print(f"  Vector docs:   {stats['vector_count']}")
-                    print(f"  Embedding:     {stats['embedding_type']}")
-                    print(f"  Vector DB:     {stats['vector_db']}")
+                    print(f"  BM25 chunks:   {stats['bm25_chunks']}")
                     print(f"  Storage:       {stats['storage_dir']}")
                     print()
                 else:
                     print("  Knowledge base not available.")
-                    print("  Install: pip install pymilvus qdrant-client")
-                    print("  Start vector DB: bash scripts/start_vector_db.sh")
-                    print("  Start embed svc: wsl -e bash -lc 'bash scripts/run_embed.sh'")
                     print()
             elif cmd[0] == "run":
                 # Direct tool invocation: /run scan_network
@@ -345,18 +340,14 @@ Examples:
     # Create agent
     tools = create_tool_registry()
 
-    # Initialize knowledge base (向量库默认进程内，可选 Milvus/Qdrant；
-    #                           嵌入为本地 transformers 服务；不可达自动降级为关键词检索)
+    # Initialize knowledge base (纯 BM25；Markdown 是事实源，索引按需重建)
     kb = None
     if config.knowledge_base_enabled:
         try:
-            kb = get_knowledge_base(
-                persist_dir=config.knowledge_base_dir or None,
-                vector_db_cfg=config.knowledge_base_vector_db,
-                embedding_cfg=config.knowledge_base_embedding,
-            )
-            print(f"  \033[90m知识库: {kb.conversation_count} 对话, {kb.count} 向量, "
-                  f"嵌入={kb._embed_type}, 向量库={kb._vector_db_name}\033[0m", file=sys.stderr)
+            kb = get_knowledge_base(persist_dir=config.knowledge_base_dir or None)
+            stats = kb.get_stats()
+            print(f"  \033[90m知识库: {stats['conversations']} 对话, "
+                  f"{stats['bm25_chunks']} 个 BM25 分块\033[0m", file=sys.stderr)
         except Exception as e:
             print(f"  \033[90m知识库初始化跳过: {e}\033[0m", file=sys.stderr)
 

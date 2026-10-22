@@ -20,7 +20,7 @@
 | 08 | `08_系统部署图.drawio` | UML 部署图 | §2 相关理论与技术 |
 | 09 | `09_MCP协议交互时序图.drawio` | UML 时序图 | §2.4 MCP 协议 + §5.2 AI Agent |
 | 10 | `10_防火墙多级降级策略流程图.drawio` | 策略流程图 | §5.1.4 FirewallChecker |
-| 11 | `11_知识库RAG流程图.drawio` | RAG 流程图 | §2.4 向量知识库 + §5.2 |
+| 11 | `11_知识库RAG流程图.drawio` | 历史图（向量检索已移除，不再用于报告） | — |
 | 12 | `12_知识库ER图.drawio` | 实体关系图 (ER) | §4.4 数据库设计 |
 
 ---
@@ -57,11 +57,12 @@ GuardianController → DeviceBridge → ESP32 之间的完整通信时序，包�
 ### 10. 防火墙多级降级策略流程图
 防火墙检查 (netsh→PowerShell→sc query) 和 Defender 检查 (PowerShell→psutil→sc query) 各自的3级降级链路，包含缓存兜底机制和 GBK 编码修复说明。
 
-### 11. 知识库 RAG 流程图
-展示写入路径 (对话保存→Embedding→ChromaDB+Markdown) 和读取路径 (问题→向量化→语义检索→注入Prompt)，以及 Embedding 双模降级策略 (MiniLM vs TF-IDF)。
+### 11. 知识库 RAG 流程图（历史）
+这是向量检索时期的旧图，**已不再用于报告**。当前知识库为 Markdown 事实源 + 中文 BM25：
+写入路径 = 保存 Markdown → 懒重建 BM25；读取路径 = 问题 → BM25 召回 → 注入 Prompt。
 
 ### 12. 知识库 ER 图
-展示 4 个核心实体的逻辑数据模型：Conversation (对话)、Message (消息)、VectorDocument (向量文档)、Skill (技能文件)、SandboxAudit (沙箱审计日志)。
+展示核心实体的逻辑数据模型：Conversation (对话)、Message (消息)、Skill (技能文件)、SandboxAudit (沙箱审计日志)。
 
 ---
 
