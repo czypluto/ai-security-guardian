@@ -31,6 +31,7 @@ try:
         QFrame,
         QHBoxLayout,
         QLabel,
+        QListWidget,
         QMessageBox,
         QPushButton,
         QScrollArea,
@@ -43,7 +44,7 @@ except ImportError:
     HAS_PYQT5 = False
     QApplication = QDialog = QWidget = QFrame = QLabel = object
     QVBoxLayout = QHBoxLayout = QPushButton = QTextEdit = object
-    QScrollArea = QMessageBox = object
+    QScrollArea = QMessageBox = QListWidget = object
     QThread = pyqtSignal = object
     QTimer = object
     QFont = QColor = object
@@ -557,6 +558,71 @@ class ChatInputBar(QFrame):
         self._send_btn.setEnabled(enabled)
 
 
+class HistoryDialog(QDialog):
+    """对话历史列表 —— 双击或点“打开”切回旧会话。"""
+
+    def __init__(self, conversations: List[dict], parent=None):
+        super().__init__(parent)
+        self.selected_id: Optional[str] = None
+        self._items: List[str] = []
+        self.setWindowTitle("对话历史")
+        self.resize(620, 440)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("对话历史")
+        title.setStyleSheet(
+            f"color: {COLORS['text_primary']}; font-size: 14px; font-weight: 600;")
+        layout.addWidget(title)
+
+        self.list = QListWidget()
+        self.list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {COLORS['bg_inset']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                padding: 4px;
+            }}
+            QListWidget::item {{ padding: 8px; border-radius: 4px; }}
+            QListWidget::item:selected {{
+                background-color: {COLORS['bg_primary']};
+                color: {COLORS['accent']};
+            }}
+        """)
+        for meta in conversations:
+            title_text = meta.get("title") or "(未命名)"
+            label = (f"{title_text}\n"
+                     f"{meta.get('updated_at', '')[:19]}  ·  "
+                     f"{meta.get('message_count', 0)} 条消息  ·  "
+                     f"{meta.get('conversation_id', '')}")
+            self.list.addItem(label)
+            self._items.append(meta.get("conversation_id", ""))
+        self.list.itemDoubleClicked.connect(lambda _: self._accept_selected())
+        layout.addWidget(self.list)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        open_btn = QPushButton("打开")
+        open_btn.clicked.connect(self._accept_selected)
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+        buttons.addWidget(open_btn)
+        buttons.addWidget(cancel_btn)
+        layout.addLayout(buttons)
+
+        if self._items:
+            self.list.setCurrentRow(0)
+
+    def _accept_selected(self):
+        row = self.list.currentRow()
+        if 0 <= row < len(self._items):
+            self.selected_id = self._items[row]
+            self.accept()
+
+
 # 聊天窗口主体
 class ChatWindow(QDialog):
     """AI 安全管家对话窗口"""
@@ -565,7 +631,6 @@ class ChatWindow(QDialog):
         super().__init__(parent)
         self.controller = controller
         self.logger = logger or logging.getLogger(__name__)
-        self._conversation: List[Dict[str, str]] = []
         self._full_history: List[Dict[str, str]] = []
         self._streaming_bubble: Optional[ChatBubble] = None
         self._streaming_text = ""
@@ -656,6 +721,28 @@ class ChatWindow(QDialog):
             f"color: {COLORS['text_muted']}; font-size: 11px; letter-spacing: 1px;")
         h_layout.addWidget(self._conn_label)
         h_layout.addStretch()
+
+        # 对话历史按钮
+        history_btn = QPushButton('历史')
+        history_btn.setCursor(Qt.PointingHandCursor)
+        history_btn.setToolTip('打开历史会话')
+        history_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {COLORS['text_muted']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                padding: 5px 14px;
+                font-size: 11px;
+                letter-spacing: 1px;
+            }}
+            QPushButton:hover {{
+                color: {COLORS['accent']};
+                border-color: {COLORS['accent']};
+            }}
+        """)
+        history_btn.clicked.connect(self._show_history)
+        h_layout.addWidget(history_btn)
 
         # 清空对话按钮
         clear_btn = QPushButton('清空')
@@ -770,8 +857,12 @@ class ChatWindow(QDialog):
         self._add_message(welcome, 'ai')
 
     # 消息管理
-    def _add_message(self, text: str, role: str) -> ChatBubble:
-        """添加消息到聊天区域"""
+    def _add_message(self, text: str, role: str, track: bool = True) -> ChatBubble:
+        """添加消息到聊天区域。
+
+        track=False 用于“渲染历史消息”：只画气泡，不重复写入
+        _conversation / _full_history（历史由调用方一次性重建）。
+        """
         if self._msg_layout.count() > 0:
             last_item = self._msg_layout.itemAt(self._msg_layout.count() - 1)
             if last_item.spacerItem():
@@ -782,10 +873,9 @@ class ChatWindow(QDialog):
         self._msg_layout.addStretch()
         self._message_widgets.append(bubble)
 
-        if role in ('user', 'ai'):
+        if track and role in ('user', 'ai'):
             # LLM API 要求 role 为 'user'/'assistant'，内部用 'ai' 需转换
             api_role = 'assistant' if role == 'ai' else 'user'
-            self._conversation.append({"role": api_role, "content": text})
             # Track full history for KB save (untruncated)
             self._full_history.append({"role": api_role, "content": text})
 
@@ -800,17 +890,70 @@ class ChatWindow(QDialog):
     def _clear_conversation(self):
         # Save current conversation to KB before clearing
         self._save_to_kb()
+        self._clear_ui()
+        self._add_welcome_message()
 
+    def _clear_ui(self):
+        """只清空界面与内存列表，不做保存/欢迎语（历史切换用）。"""
         while self._msg_layout.count() > 0:
             item = self._msg_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        self._conversation.clear()
         self._full_history.clear()
         self._message_widgets.clear()
         self._msg_layout.addStretch()
-        self._add_welcome_message()
+
+    def _show_history(self):
+        if self._agent is None:
+            QMessageBox.information(
+                self, "对话历史",
+                "AI 核心尚未加载完成，请稍后再试。")
+            return
+        try:
+            conversations = self._agent.list_conversations()
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "对话历史", f"读取历史失败: {e}")
+            return
+        if not conversations:
+            QMessageBox.information(self, "对话历史", "还没有已归档的会话。")
+            return
+
+        dialog = HistoryDialog(conversations, self)
+        if dialog.exec_() == QDialog.Accepted and dialog.selected_id:
+            self._open_conversation(dialog.selected_id)
+
+    def _open_conversation(self, conversation_id: str):
+        try:
+            messages = self._agent.open_conversation(conversation_id)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "对话历史", f"打开会话失败: {e}")
+            return
+
+        self._clear_ui()
+        for message in messages:
+            text = (message.content if isinstance(message.content, str)
+                    else str(message.content))
+            if message.type == "human":
+                self._add_message(text, 'user', track=False)
+                self._full_history.append({"role": "user", "content": text})
+            elif message.type == "ai":
+                for call in getattr(message, "tool_calls", None) or []:
+                    self._add_message(
+                        f"调用工具: {call.get('name', '')}", 'system', track=False)
+                if text.strip():
+                    self._add_message(text, 'ai', track=False)
+                    self._full_history.append(
+                        {"role": "assistant", "content": text})
+            elif message.type == "tool":
+                name = getattr(message, "name", "") or "tool"
+                self._add_message(
+                    f"[工具结果] {name}: {text[:200]}", 'system', track=False)
+
+        self._add_message(
+            f"已打开历史会话 {conversation_id}，继续输入即可续聊。",
+            'system', track=False)
+        QTimer.singleShot(50, self._scroll_to_bottom)
 
     def _save_to_kb(self):
         """保存当前对话到知识库（需用户确认）。"""
@@ -1035,8 +1178,6 @@ class ChatWindow(QDialog):
 
         # 添加到对话历史 (仅成功且非空的回复)
         if success and response_text.strip():
-            self._conversation.append(
-                {"role": "assistant", "content": response_text})
             self._full_history.append(
                 {"role": "assistant", "content": response_text})
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 # Patch ctypes before importing agent modules
@@ -16,6 +17,8 @@ _mock_ctypes.windll.shell32.IsUserAnAdmin = MagicMock(return_value=False)
 _mock_ctypes.wintypes = MagicMock()
 _mock_ctypes.Structure = type
 sys.modules["ctypes"] = _mock_ctypes
+
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 
 from agent.config import AgentConfig, LLMProvider  # noqa: E402  需先 mock ctypes
 from agent.core import AgentCore  # noqa: E402
@@ -477,4 +480,40 @@ class TestApprovalThroughAgentCore:
         agent = _gated_agent(MagicMock(return_value={"ok": True}))
         assert agent.summary()["skills_active"] is None
         assert "model" in agent.summary()
+
+
+def test_query_history_tool_searches_transcript():
+    """query_history 是 AgentCore 注册的工具，回查当前会话的长期副本。"""
+    agent = AgentCore(_make_minimal_config())
+    agent.transcripts.append_turn(
+        agent.conversation_id, "t-test",
+        [HumanMessage(content="防火墙状态怎么样"),
+         AIMessage(content="防火墙已开启")],
+    )
+
+    parsed = json.loads(agent.tools.execute("query_history", {"query": "防火墙"}))
+    assert parsed["results"]
+    assert parsed["results"][0]["turn_id"] == "t-test"
+
+
+def test_mcp_tool_handler_accepts_model_arguments():
+    """MCP handler 必须收 **kwargs：ToolDef.execute 会把模型参数展开。"""
+    agent = AgentCore(_make_minimal_config())
+    fake_tool = SimpleNamespace(
+        name="mcp_echo",
+        description="echo",
+        input_schema={"properties": {"query": {"type": "string"}}},
+    )
+    fake_mcp = MagicMock()
+    fake_mcp.get_all_tools.return_value = [fake_tool]
+    fake_mcp.total_tools = 1
+    fake_mcp.connected_servers = ["fake"]
+    fake_mcp.call_tool.return_value = ('{"ok": true}', "fake")
+
+    agent.mcp = fake_mcp
+    agent._merge_mcp_tools()
+
+    parsed = json.loads(agent.tools.execute("mcp_echo", {"query": "hello"}))
+    assert parsed == {"ok": True}
+    fake_mcp.call_tool.assert_called_once_with("mcp_echo", {"query": "hello"})
 

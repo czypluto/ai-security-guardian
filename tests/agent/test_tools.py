@@ -78,6 +78,11 @@ class TestToolDef:
         required = schema["function"]["parameters"].get("required", [])
         assert "input" in required
         assert "verbose" not in required
+        # `required: True` 是内部约定，绝不能泄漏进给模型看的属性 schema：
+        # 严格 provider（DeepSeek）会以 "true is not of type array" 拒绝整个请求。
+        props = schema["function"]["parameters"]["properties"]
+        assert "required" not in props["input"]
+        assert "required" not in props["verbose"]
 
     def test_to_openai_schema_no_required(self):
         def handler(**kwargs):

@@ -182,7 +182,6 @@ def run_chat_mode(agent: AgentCore):
     print("  Type natural language, or \033[33m/run &lt;tool&gt;\033[0m to call a tool directly.")
     print()
 
-    history = []
     while True:
         try:
             user_input = input("  \033[36mYou>\033[0m ").strip()
@@ -197,7 +196,10 @@ def run_chat_mode(agent: AgentCore):
 
         # Slash commands
         if user_input.startswith("/"):
-            cmd = user_input[1:].lower().split()
+            parts = user_input[1:].split()
+            cmd = ([parts[0].lower()] + parts[1:]) if parts else []
+            if not cmd:
+                continue
             if cmd[0] in ("q", "quit", "exit"):
                 _confirm_and_save(agent)
                 print("  Goodbye!")
@@ -211,6 +213,8 @@ def run_chat_mode(agent: AgentCore):
                 print("  /clear      Clear conversation history (auto-saves)")
                 print("  /save       Manually save conversation to KB")
                 print("  /kb         Show knowledge base stats")
+                print("  /history    List archived conversations")
+                print("  /open ID    Open an archived conversation")
                 print("  /quit       Exit")
                 print()
             elif cmd[0] == "tools":
@@ -222,7 +226,6 @@ def run_chat_mode(agent: AgentCore):
             elif cmd[0] in ("clear", "cls"):
                 saved = _confirm_and_save(agent)
                 agent.clear_conversation()
-                history.clear()
                 if saved:
                     print("  History cleared (conversation saved to KB).")
                 else:
@@ -247,6 +250,37 @@ def run_chat_mode(agent: AgentCore):
                 else:
                     print("  Knowledge base not available.")
                     print()
+            elif cmd[0] in ("history", "hist"):
+                convs = agent.list_conversations()
+                print()
+                if not convs:
+                    print("  No archived conversations.")
+                else:
+                    print("  \033[1mConversations:\033[0m")
+                    for meta in convs[:20]:
+                        title = meta.get("title") or "(untitled)"
+                        print(f"  \033[36m{meta['conversation_id']}\033[0m  "
+                              f"{meta.get('updated_at', '')[:19]}  "
+                              f"{meta.get('message_count', 0):>3} msgs  {title}")
+                    print()
+            elif cmd[0] == "open":
+                if len(cmd) < 2:
+                    print("  Usage: /open <conversation_id>")
+                    print()
+                else:
+                    try:
+                        messages = agent.open_conversation(cmd[1])
+                    except KeyError as e:
+                        print(f"  {e}")
+                        print()
+                    else:
+                        print(f"  Opened {cmd[1]} ({len(messages)} messages).")
+                        for message in messages[-8:]:
+                            role = "You" if message.type == "human" else "AI"
+                            text = (message.content if isinstance(message.content, str)
+                                    else str(message.content))
+                            print(f"  \033[90m[{role}]\033[0m {text[:160]}")
+                        print()
             elif cmd[0] == "run":
                 # Direct tool invocation: /run scan_network
                 if len(cmd) < 2:
@@ -284,7 +318,6 @@ def run_chat_mode(agent: AgentCore):
             continue
 
         # Run agent
-        history.append({"role": "user", "content": user_input})
         print()
         display_stream(agent.run_stream(user_input))
         print()

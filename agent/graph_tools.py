@@ -19,19 +19,20 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
-from .tools import ToolDef, ToolRegistry
+from .tools import ToolDef, ToolRegistry, schema_properties
 
 
 def build_object_schema(parameters: dict) -> dict:
     """把 ToolDef.parameters（properties 字典）补成完整 JSON Schema 对象。
 
     与 `ToolDef.to_openai_schema()` 里内联的结构保持**同一口径** ——
-    以每个参数自己的 `required` 键为准，而不是另设一份清单。
+    以每个参数自己的 `required` 键为准，而不是另设一份清单；
+    属性内的 `required` 布尔键会被剥离（它不是合法 JSON Schema）。
     """
     parameters = parameters or {}
     return {
         "type": "object",
-        "properties": parameters,
+        "properties": schema_properties(parameters),
         "required": [k for k, v in parameters.items()
                      if isinstance(v, dict) and v.get("required", False)],
     }

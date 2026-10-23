@@ -23,7 +23,7 @@ pytest.importorskip("PyQt5", reason="GUI 测试需要 PyQt5（CI 不安装 gui �
 
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 
-from pc_agent.chat_window import LLMWorker  # noqa: E402
+from pc_agent.chat_window import HistoryDialog, LLMWorker  # noqa: E402
 
 PAYLOAD = {
     "kind": "approval_request",
@@ -228,3 +228,18 @@ class TestApprovalHandshake:
         assert worker.seconds_since_progress > 90
         worker.note_progress()
         assert worker.seconds_since_progress < 1
+
+
+class TestHistoryDialog:
+    def test_selects_conversation(self, qapp):
+        conversations = [{
+            "conversation_id": "conv-1",
+            "title": "防火墙检查",
+            "updated_at": "2026-10-23T00:00:00",
+            "message_count": 6,
+        }]
+        dialog = HistoryDialog(conversations)
+        assert dialog.list.count() == 1
+        dialog.list.setCurrentRow(0)
+        dialog._accept_selected()
+        assert dialog.selected_id == "conv-1"

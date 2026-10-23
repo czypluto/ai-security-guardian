@@ -48,8 +48,16 @@ class AgentConfig:
     # Agent loop
     max_iterations: int = 10
     stream_output: bool = True
-    # 送给 LLM 的历史消息窗口（对齐 GUI 原有的 [-20:] 裁剪）
-    history_limit: int = 20
+
+    # 上下文预算（token，估算值）。压缩在 trigger 处触发，压到 target 水位。
+    context_budget: int = 24000
+    context_compress_trigger: float = 0.8
+    context_compress_target: float = 0.5
+    summary_max_tokens: int = 1200
+    min_recent_turns: int = 3
+    tool_result_max_chars: int = 4000
+    transcript_dir: str = ""
+    conversation_index_dir: str = ""
 
     # 危险工具的人工审批闸门（实现见 agent/graph.py 的 approval 节点）
     #
@@ -223,7 +231,14 @@ class AgentConfig:
             knowledge_base_top_k=kb_top_k,
             # 以下此前**从未**从配置传入 —— yaml 里写了也不生效（配置哑变量）。
             max_iterations=agent_cfg.get("max_iterations", 10),
-            history_limit=agent_cfg.get("history_limit", 20),
+            context_budget=int(agent_cfg.get("context_budget", 24000)),
+            context_compress_trigger=float(agent_cfg.get("context_compress_trigger", 0.8)),
+            context_compress_target=float(agent_cfg.get("context_compress_target", 0.5)),
+            summary_max_tokens=int(agent_cfg.get("summary_max_tokens", 1200)),
+            min_recent_turns=int(agent_cfg.get("min_recent_turns", 3)),
+            tool_result_max_chars=int(agent_cfg.get("tool_result_max_chars", 4000)),
+            transcript_dir=agent_cfg.get("transcript_dir", "") or "",
+            conversation_index_dir=agent_cfg.get("conversation_index_dir", "") or "",
             system_prompt=agent_cfg.get("system_prompt", "") or "",
             approval_mode=agent_cfg.get("approval_mode", "interactive"),
             approval_required_tools=list(agent_cfg.get("approval_required_tools") or []),

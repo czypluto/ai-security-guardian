@@ -449,6 +449,21 @@ Markdown 是唯一事实源；BM25 索引是进程内派生物，语料变动时
 语料是本地单人积累的几十~几千条对话，精确词面召回更贴合安全场景；
 向量模型与向量库只保留在另一个 RAG 项目中，本项目不加载、不连接。
 
+### 7.3 上下文压缩与会话历史
+
+三层数据各司其职：
+
+| 数据 | 位置 | 用途 |
+|---|---|---|
+| 完整对话（含工具结果） | `data/transcripts/<conversation_id>.jsonl` | 事实源；UI 展示、回查 |
+| 会话索引 | `data/conversations/index.json` | 历史列表、conversation ↔ thread 映射 |
+| 短期上下文 | `GuardianState.summary` + 最近窗口 | 真正发给模型的内容 |
+
+压缩在输入 token 估算超过 `context_budget × 0.8` 时触发，压到 50% 水位；
+只在 turn 边界切，当前 turn 与 tool_call/ToolMessage 配对永不拆开。
+工具结果在 prompt 中单独截断，完整结果仍保留在 transcript。
+需要早期细节时，模型调用 `query_history` 按 BM25 回查当前会话。
+
 ---
 
 ## 8. Skills 技能系统
@@ -641,10 +656,13 @@ ai-security-guardian/
 │
 ├── agent/                             # 🧠 AI Agent 子系统
 │   ├── __init__.py
-│   ├── core.py                        #   ReAct Agent 核心循环
+│   ├── core.py                        #   AgentCore: 装配 + 事件翻译 + 历史归档
 │   ├── config.py                      #   Agent 配置 + LLMProvider
+│   ├── context.py                     #   token 估算 / 安全窗口 / 工具结果压缩
+│   ├── transcript.py                  #   turn 级 append-only 长期副本
+│   ├── conversations.py               #   会话索引 (conversation_id ↔ thread_id)
 │   ├── llm.py                         #   LLM 路由器 (function calling)
-│   ├── tools.py                       #   工具注册表 + 25 个内置工具
+│   ├── tools.py                       #   工具注册表 + 33 个内置工具
 │   ├── mcp_client.py                  #   MCP JSON-RPC 客户端
 │   ├── mcp_server_mode.py             #   MCP Server 模式
 │   ├── sandbox.py                     #   6 层安全沙箱

@@ -96,7 +96,7 @@ def make_config(**overrides) -> AgentConfig:
     base = dict(
         providers=[], max_iterations=5, mcp_servers=[], skill_dirs=[],
         knowledge_base_enabled=False, checkpoint_backend="memory",
-        approval_mode="interactive", history_limit=20,
+        approval_mode="interactive",
     )
     base.update(overrides)
     return AgentConfig(**base)

@@ -102,7 +102,7 @@ $ python agent_cli.py "全面扫描我的网络安全"
 │  │      │                                                  │  │
 │  │  技能匹配 + KB 检索        SqliteSaver 检查点 (可续跑)    │  │
 │  │                                                        │  │
-│  │              Tool Registry (33 个工具)                   │  │
+│  │              Tool Registry (33 + query_history)           │  │
 │  │  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │  │
 │  │  │Security │ │Defender  │ │OTX Threat│ │NVD CVE    │  │  │
 │  │  │Sandbox  │ │Scanner   │ │Intel     │ │Lookup     │  │  │
@@ -137,17 +137,23 @@ $ python agent_cli.py "全面扫描我的网络安全"
 ![防火墙多级降级策略流程图](images/10_防火墙多级降级策略流程图.drawio.png)
 
 ### 🤖 AI Agent (LangGraph 编排)
-- ✅ **状态图编排** — `START → prepare → agent ─┬→ END / └→ approval → tools → agent`
+- ✅ **状态图编排** — `START → prepare → compress → agent ─┬→ END / └→ approval → tools → compress → agent`
   （见下方「Agent 编排」一节）
 - ✅ **多模型支持** — DeepSeek / 智谱 / 硅基流动，按 priority 自动故障转移
   （配了多家才会真正发生转移；只配一家时无从转移）
-- ✅ **33 个内置工具** — 安全扫描、威胁情报、CVE 查询、命令沙箱、自审计、ESP32 隔离、下载扫描
+- ✅ **33 个内置工具 + `query_history`** — 安全扫描、威胁情报、CVE 查询、命令沙箱、
+  自审计、ESP32 隔离、下载扫描、历史回查
 - ✅ **人工审批闸门** — `run_command` / `install_skill` / `recommend_mcp_server`
   执行前暂停等用户确认（CLI 命令行确认，GUI 弹对话框）
 - ✅ **崩溃可恢复** — 图状态落在 `data/` 下的 SQLite，审批中断后重启用同一
   `thread_id` 可续跑
+- ✅ **上下文压缩** — 按 token 预算（默认 24k，80% 触发 / 50% 目标）把较早的
+  turn 压成结构化摘要；工具结果在 prompt 中单独截断，完整结果仍进长期副本
+- ✅ **会话历史** — turn 级 append-only JSONL + 会话索引；GUI「历史」按钮或
+  CLI `/history` `/open <id>` 可切回旧会话继续聊
+- ✅ **历史回查** — 模型需要早期细节时调用 `query_history`，按 BM25 查当前会话副本
 - ✅ **逐 token 流式输出** — GUI 与 CLI 都是逐字显示
-- ✅ **CLI 对话模式** — `/tools` `/save` `/kb` `/run` `/model` `/clear` 等斜杠命令
+- ✅ **CLI 对话模式** — `/tools` `/save` `/kb` `/history` `/open` `/run` `/model` `/clear` 等斜杠命令
 
 ![ReAct核心循环流程图](images/04_ReAct核心循环流程图.drawio.png)
 
@@ -284,16 +290,17 @@ $ python agent_cli.py "全面扫描我的网络安全"
 ### 图结构
 
 ```
-START → prepare → agent ─┬─(无 tool_calls)──────────────────→ END
-                         └─(有 tool_calls)→ approval → tools ──┘
-                                              ↑
-                                    全图唯一的 interrupt()
+START → prepare → compress → agent ─┬─(无 tool_calls)──────────────→ END
+                                    └─(有 tool_calls)→ approval → tools → compress ─┘
+                                                         ↑
+                                               全图唯一的 interrupt()
 ```
 
 | 节点 | 职责 |
 |---|---|
 | `prepare` | 技能触发匹配 + 知识库检索（带超时预算） |
-| `agent` | 组装系统提示词 → 调模型 → 无工具调用则产出终局文本 |
+| `compress` | 检查 token 预算；超阈值时把较早 turn 压成结构化摘要（当前 turn 永不压缩） |
+| `agent` | 组装系统提示词 + 摘要 + 安全窗口 → 调模型 |
 | `approval` | **纯函数**，对敏感工具调 `interrupt()` 等人工批准 |
 | `tools` | 顺序执行工具；被拒绝的调用回填一条 `rejected_by_user` 结果 |
 
@@ -320,6 +327,32 @@ checkpointer 默认是 `data/guardian_graph.sqlite`（单文件）。于是在�
 关掉进程，重新启动后用同一个 `thread_id` 仍能续跑 —— 已实测跨进程验证，
 且工具只被执行一次。切回内存模式：配置 `agent.checkpoint_backend: memory`
 （测试与 CI 用这个，避免往真实目录写库）。
+
+### 上下文压缩与会话历史
+
+LLM 的上下文是有限且昂贵的资源。这套实现把「模型看到的上下文」和「用户看到的历史」
+分开处理：
+
+| 数据 | 位置 | 用途 |
+|---|---|---|
+| 完整对话（含工具调用/结果） | `data/transcripts/<conversation_id>.jsonl` | 事实源；UI 展示、`query_history` 回查 |
+| 会话索引 | `data/conversations/index.json` | 历史列表、`conversation_id ↔ thread_id` 映射 |
+| 短期上下文 | `GuardianState.summary` + 最近窗口 | 每次调模型时实际发送的内容 |
+| 图状态 | `data/guardian_graph.sqlite` | 审批中断/重启后的续跑 |
+
+压缩规则：
+
+- **触发**：估算输入 token（system + 摘要 + 工具 schema + 历史 + 输出预留）
+  超过 `context_budget × 0.8`。默认 24k，即约 19.2k 触发。
+- **目标**：压到 `context_budget × 0.5`，避免每轮反复压缩。
+- **范围**：只在 HumanMessage（turn 边界）切，至少保留最近
+  `min_recent_turns` 轮；当前 turn 永不压缩。
+- **配对**：`AIMessage(tool_calls)` 与对应 `ToolMessage` 永不拆开。
+- **工具结果**：在 prompt 里按 `tool_result_max_chars` 截断，完整结果仍留在 transcript。
+- **回查**：模型可调用 `query_history`，按 BM25 查当前会话的长期副本。
+
+用户点「历史」或输入 `/history` 时，UI 从 transcript 渲染完整原文；模型续聊时
+只拿摘要 + 最近窗口，需要旧细节再通过 `query_history` 取回。
 
 ### 与自研组件如何衔接
 
@@ -466,8 +499,11 @@ ai-security-guardian/
 │   ├── graph.py                       #   LangGraph 状态图 —— 主循环在这里
 │   ├── graph_model.py                 #   LLMRouter → BaseChatModel 适配
 │   ├── graph_tools.py                 #   ToolDef → BaseTool 适配
-│   ├── core.py                        #   AgentCore: 装配 + 事件翻译
+│   ├── core.py                        #   AgentCore: 装配 + 事件翻译 + 历史归档
 │   ├── config.py                      #   Agent 配置 + 系统提示词
+│   ├── context.py                     #   token 估算 / 安全窗口 / 工具结果压缩
+│   ├── transcript.py                  #   turn 级 append-only 长期副本 (JSONL)
+│   ├── conversations.py               #   会话索引 (conversation_id ↔ thread_id)
 │   ├── llm.py                         #   LLM 路由器 (function calling)
 │   ├── tools.py                       #   工具注册表 + 33 个内置工具
 │   ├── mcp_client.py                  #   MCP JSON-RPC 客户端
@@ -525,7 +561,8 @@ ai-security-guardian/
 ├── knowledge_base/                    # 🧠 本地知识库 (不入库)
 │   └── conversations/                 #   Markdown 对话文件 (事实源)
 │
-├── data/                              # 🔒 图状态 SQLite (不入库)
+├── data/                              # 🔒 运行时数据 (不入库)
+│                                      #   图检查点 + transcripts/ + conversations/
 │
 ├── docs/                              # 📖 仅 CI 方案文档
 │
@@ -634,7 +671,14 @@ knowledge_base:
 # Agent 编排 (可选；不写就用下面的默认值)
 agent:
   max_iterations: 10         # 单轮最多调用 LLM 几次
-  history_limit: 20          # 送给模型的历史消息窗口
+  context_budget: 24000      # 输入 token 估算预算
+  context_compress_trigger: 0.8   # 超过预算的 80% 触发压缩
+  context_compress_target: 0.5    # 压缩到 50% 水位
+  summary_max_tokens: 1200   # 单份摘要上限
+  min_recent_turns: 3        # 压缩时至少保留最近几个完整 turn
+  tool_result_max_chars: 4000  # 工具结果进 prompt 的字符上限
+  transcript_dir: ""         # 空 = data/transcripts
+  conversation_index_dir: "" # 空 = data/conversations
   approval_mode: interactive # interactive | auto_approve | auto_reject
   approval_required_tools: []  # 追加到工具自带审批标注之上的名单
   approval_timeout_seconds: 300
@@ -660,6 +704,7 @@ agent:
 | **系统监控** | psutil, pywin32, WMI | 进程/网络/事件日志 |
 | **LLM** | OpenAI-compatible API | DeepSeek / 智谱 / 硅基流动 |
 | **Agent 编排** | LangGraph 1.x (LTS) + langchain-core | 状态图 + 检查点 + 人工中断 |
+| **上下文管理** | token 估算 + 滚动摘要 + turn 级 JSONL | 80% 触发 / 50% 目标；`query_history` 回查 |
 | **图状态持久化** | SQLite (langgraph-checkpoint-sqlite) | 崩溃后可按 thread_id 续跑 |
 | **桌面 GUI** | PyQt5 + QSS | 暗色极简主题 |
 | **系统托盘** | pystray + Pillow | 后台运行 |
@@ -773,7 +818,7 @@ pytest tests/ -v
 │   白名单 → Job Object → 超时/截断 → 审计      │
 ├─────────────────────────────────────────────┤
 │ 第 4 层: AI Agent 守则 + 人工闸门             │
-│   系统提示词 + Skill 匹配 + 33 工具           │
+│   系统提示词 + Skill 匹配 + 34 工具           │
 │   敏感工具执行前 interrupt() 等用户批准        │
 ├─────────────────────────────────────────────┤
 │ 第 5 层: 事后审计                             │
@@ -795,6 +840,7 @@ pytest tests/ -v
 | **受限令牌层 (Restricted Token)** | **经评估不做**，不是"待办"。实测：非提权进程调用 `CreateRestrictedToken` 直接返回 `ERROR_PRIVILEGE_NOT_HELD(534)`（即使 `flags=0`）——连令牌都建不出来；真正执行还需 `CreateProcessAsUser`（要 `SeAssignPrimaryTokenPrivilege`，仅管理员持有），且得用 ctypes 重写一遍进程创建（管道、环境块）。写一堆无法在本机验证的提权代码，正是这个项目一直在清理的那类问题。当前用 Job Object + 命令白名单覆盖主要风险 |
 | **文件写入守卫** | `ALLOWED_WRITE_PATHS` 已删除 —— 定义了但零引用的常量容易让人误以为有这层防护 |
 | **知识库检索** | 纯中文 BM25：强于精确术语，弱于同义改写/跨语言检索。本项目不做向量召回，也不依赖任何嵌入服务 |
+| **上下文压缩** | 摘要是有损的；token 数是保守估算而非 provider 精确计数。摘要模型失败时退回确定性要点提取，不阻塞本轮 |
 | **SQLite 检查点** | 用 `sqlite-vec` 扩展；个别精简版 Python 可能装不上，届时自动降级为内存模式（重启不可续跑） |
 | **平台** | 仅 Windows。`pywin32` / `ctypes.windll` / PowerShell 大量使用，Linux/macOS 需要移植 |
 | **技能触发匹配** | 启发式而非语义匹配：连续子串优先，中文允许字符按序散落（「扫描我的网络」能命中 `network_scan`），两字触发词只做连续匹配。没有做分词或向量相似度 |

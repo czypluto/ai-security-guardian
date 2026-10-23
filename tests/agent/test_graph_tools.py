@@ -48,6 +48,9 @@ class TestBuildObjectSchema:
         })
         assert schema["type"] == "object"
         assert schema["required"] == ["a"]
+        # 属性里的内部 `required` 布尔键必须被剥离
+        assert "required" not in schema["properties"]["a"]
+        assert "required" not in schema["properties"]["b"]
 
     def test_empty_parameters(self):
         assert build_object_schema({})["properties"] == {}

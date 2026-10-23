@@ -22,19 +22,22 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING, Generator, Optional
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
 from .config import AgentConfig
+from .conversations import ConversationIndex, title_from_messages
 from .graph import build_graph, build_system_prompt, extract_interrupts, recursion_limit_for
 from .graph_model import LLMUnavailableError, build_chat_model
 from .llm import LLMRouter
 from .mcp_client import MCPManager
 from .skill_loader import Skill, SkillManager
 from .tools import ToolDef, ToolRegistry, create_tool_registry
+from .transcript import TranscriptStore
 
 if TYPE_CHECKING:
     from .knowledge_base import KnowledgeBase
@@ -64,6 +67,8 @@ class AgentCore:
         self.llm = LLMRouter(config.providers)
         self.tools = tool_registry or create_tool_registry()
         self._conversation_id: Optional[str] = None
+        self.transcripts = TranscriptStore(config.transcript_dir or None)
+        self.conversations = ConversationIndex(config.conversation_index_dir or None)
 
         # Knowledge base (optional)
         self.kb = knowledge_base
@@ -91,6 +96,7 @@ class AgentCore:
         self._graph_config: dict = {}
         # 审批回调：由驱动方（GUI 的 worker）临时挂上。为空时走 CLI 的 input()。
         self.approval_callback = None
+        self._register_history_tool()
         self._model = build_chat_model(self.llm, config)
         self._graph = build_graph(
             config, self.tools, self._model, skills=self.skills, kb=self.kb,
@@ -101,14 +107,23 @@ class AgentCore:
 
     def _merge_mcp_tools(self):
         """Register MCP-discovered tools into the built-in registry."""
+
+        def _make_handler(tool_name: str):
+            # ToolDef.execute 用 handler(**arguments) 展开模型返回的 dict，
+            # 所以这里必须收 **kwargs。若写成 handler(args)，
+            # {"query": "x"} 会被展开成 query="x"，直接 TypeError。
+            def handler(**kwargs):
+                return self._mcp_tool_handler(tool_name, kwargs)
+            return handler
+
         for mcp_tool in self.mcp.get_all_tools():
             self.tools.register(ToolDef(
                 name=mcp_tool.name,
                 description=mcp_tool.description,
                 parameters=mcp_tool.input_schema.get("properties", {}),
-                handler=lambda args, tn=mcp_tool.name: self._mcp_tool_handler(tn, args),
+                handler=_make_handler(mcp_tool.name),
                 # 外部 MCP server 可执行任意代码 —— 标注为最高风险等级。
-                # 但 requires_approval 保持默认 False：审批名单锁定在三个内置工具上
+                # 但 requires_approval 保持默认 False：审批名单锁定在内置工具上
                 # （见 tool 定义处的 APPROVAL_REQUIRED_TOOLS），MCP 工具靠
                 # installer 的安装前扫描 + 用户手工 review 把关。
                 risk_level="dangerous",
@@ -136,14 +151,57 @@ class AgentCore:
             {"kb_context": kb_context, "active_skill": None},
         )
 
+    # ---- 历史回查工具 ----
+
+    def _register_history_tool(self):
+        """注册 query_history —— 只读当前会话的长期副本，不需要审批。"""
+        self.tools.register(ToolDef(
+            name="query_history",
+            description="Search the current conversation's archived history. "
+                        "Use this when you need details from earlier turns that "
+                        "have been compressed out of the short-term context. "
+                        "Returns turn_id, timestamp, snippet and score.",
+            parameters={
+                "query": {
+                    "type": "string",
+                    "description": "What to look for in earlier turns",
+                    "required": True,
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of turns to return (default 5)",
+                    "default": 5,
+                },
+            },
+            handler=self._query_history,
+        ))
+
+    def _query_history(self, query: str, limit: int = 5) -> dict:
+        if not self._conversation_id:
+            return {"error": "当前没有活动会话"}
+        try:
+            return {
+                "conversation_id": self._conversation_id,
+                "results": self.transcripts.search(
+                    self._conversation_id, query, int(limit or 5)),
+            }
+        except Exception as e:  # noqa: BLE001 - 回查失败不影响主流程
+            logger.warning("query_history 失败: %s", e)
+            return {"error": str(e)}
+
     # ---- 图 / thread ----
 
-    def _new_thread(self) -> str:
-        """换一个 thread_id（= 丢掉上下文，开一段新对话）。
+    def _new_conversation_id(self) -> str:
+        return f"conv-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
 
-        旧 thread 的 checkpoint 自然成为孤儿；SQLite 里留着不影响新对话。
+    def _new_thread(self) -> str:
+        """开一段新对话：conversation_id 与 thread_id 都由它派生。
+
+        thread_id 不再随机生成，而是稳定映射到 conversation_id，
+        这样重启/打开历史会话时还能找回同一个 checkpoint。
         """
-        self._thread_id = f"guardian-{uuid.uuid4().hex}"
+        self._conversation_id = self._new_conversation_id()
+        self._thread_id = f"guardian-{self._conversation_id}"
         self._graph_config = {
             "configurable": {"thread_id": self._thread_id},
             "recursion_limit": recursion_limit_for(self.config),
@@ -176,10 +234,13 @@ class AgentCore:
         走一个临时 thread，既不污染用户的对话历史，也不写进 KB 落库的消息里。
         """
         graph_config = self._graph_config
+        turn_id = f"t-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
+        conversation_id = self._conversation_id or ""
         if ephemeral:
+            conversation_id = f"ephemeral-{uuid.uuid4().hex}"
             graph_config = {
                 **self._graph_config,
-                "configurable": {"thread_id": f"ephemeral-{uuid.uuid4().hex}"},
+                "configurable": {"thread_id": conversation_id},
             }
         else:
             self._conversation_messages.append({"role": "user", "content": user_input})
@@ -187,6 +248,8 @@ class AgentCore:
         payload = {
             "messages": [HumanMessage(content=user_input)],
             "user_input": user_input,
+            "turn_id": turn_id,
+            "conversation_id": conversation_id,
         }
 
         try:
@@ -219,7 +282,115 @@ class AgentCore:
             return
 
         if not ephemeral:
+            self._archive_turn(turn_id)
             self._record_result(graph_config)
+
+    def _archive_turn(self, turn_id: str):
+        """把本轮消息追加到长期副本（turn 级 JSONL）。"""
+        if not self._conversation_id:
+            return
+        try:
+            values = self._graph.get_state(self._graph_config).values or {}
+            messages = values.get("messages") or []
+            start = 0
+            for i in range(len(messages) - 1, -1, -1):
+                if isinstance(messages[i], HumanMessage):
+                    start = i
+                    break
+            turn_messages = messages[start:]
+            if turn_messages:
+                appended = self.transcripts.append_turn(
+                    self._conversation_id, turn_id, turn_messages)
+                if appended:
+                    title = title_from_messages(turn_messages)
+                    if self.conversations.get(self._conversation_id) is None:
+                        self.conversations.create(
+                            self._conversation_id, self._thread_id,
+                            title=title,
+                            transcript_path=self.transcripts.path_for(
+                                self._conversation_id),
+                        )
+                    self.conversations.record_turn(
+                        self._conversation_id, len(turn_messages), title=title)
+        except Exception as e:  # noqa: BLE001 - 归档失败不该让本轮报错
+            logger.warning("归档 turn 失败: %s", e)
+
+    # ---- 会话历史 ----
+
+    def _sync_conversation_index(self):
+        """把没有索引条目的 transcript 补进来（兼容旧数据/手工拷贝）。"""
+        for conversation_id in self.transcripts.list_conversation_ids():
+            if self.conversations.get(conversation_id) is not None:
+                continue
+            try:
+                messages = self.transcripts.load_messages(conversation_id)
+            except Exception:
+                continue
+            title = title_from_messages(messages)
+            self.conversations.create(
+                conversation_id, f"guardian-{conversation_id}",
+                title=title,
+                transcript_path=self.transcripts.path_for(conversation_id),
+            )
+            self.conversations.update(
+                conversation_id, message_count=len(messages), title=title)
+
+    def list_conversations(self) -> list[dict]:
+        """按更新时间倒序列出历史会话（只读索引，不加载全文）。"""
+        self._sync_conversation_index()
+        return [meta.to_dict() for meta in self.conversations.list()]
+
+    def open_conversation(self, conversation_id: str) -> list[BaseMessage]:
+        """切换到历史会话并返回完整消息（供 UI 展示）。
+
+        - 模型状态优先用该 thread 的 checkpoint；
+        - checkpoint 不存在时，用 transcript 重建 state；
+        - UI 展示始终以 transcript 为准。
+        """
+        self._sync_conversation_index()
+        meta = self.conversations.get(conversation_id)
+        if meta is None:
+            raise KeyError(f"未知会话: {conversation_id}")
+
+        messages = self.transcripts.load_messages(conversation_id)
+        self._conversation_id = conversation_id
+        self._thread_id = meta.thread_id or f"guardian-{conversation_id}"
+        self._graph_config = {
+            "configurable": {"thread_id": self._thread_id},
+            "recursion_limit": recursion_limit_for(self.config),
+        }
+
+        try:
+            values = self._graph.get_state(self._graph_config).values or {}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("读取会话 checkpoint 失败(%s)", e)
+            values = {}
+
+        if not values.get("messages") and messages:
+            # 没有可用 checkpoint：用 transcript 重建一个，保证续聊能接上
+            try:
+                self._graph.update_state(self._graph_config, {
+                    "messages": messages,
+                    "conversation_id": conversation_id,
+                    "summary": "",
+                    "compressed_through_index": 0,
+                    "turn_id": "",
+                })
+            except Exception as e:  # noqa: BLE001
+                logger.warning("重建会话 state 失败(%s)", e)
+
+        # 供 KB 保存/横幅使用
+        self._conversation_messages = [
+            {"role": "user" if m.type == "human" else "assistant",
+             "content": m.content if isinstance(m.content, str) else str(m.content)}
+            for m in messages
+            if m.type in ("human", "ai")
+        ]
+        return messages
+
+    @property
+    def conversation_id(self) -> Optional[str]:
+        return self._conversation_id
 
     def _ask_approval(self, payload: dict) -> dict:
         """向用户征求一次执行批准。

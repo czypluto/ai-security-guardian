@@ -12,6 +12,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'pc_agent'))
 
 
+@pytest.fixture(autouse=True)
+def isolate_conversation_storage(tmp_path, monkeypatch):
+    """把 transcript / 会话索引隔离到临时目录，避免测试写真实 data/。"""
+    monkeypatch.setenv("GUARDIAN_TRANSCRIPT_DIR", str(tmp_path / "transcripts"))
+    monkeypatch.setenv("GUARDIAN_CONVERSATION_INDEX_DIR", str(tmp_path / "conversations"))
+
+
 @pytest.fixture
 def mock_logger():
     """提供一个静默的 Mock Logger"""

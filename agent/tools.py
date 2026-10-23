@@ -43,6 +43,23 @@ def _is_admin() -> bool:
         return False
 
 
+def schema_properties(parameters: dict) -> dict:
+    """拷贝参数定义并剥离内部约定的 ``required`` 布尔键。
+
+    ``ToolDef.parameters`` 用紧凑写法 ``{"pid": {"type": "integer",
+    "required": True}}``。这里的 ``required`` 是**本项目的**约定，不是合法
+    JSON Schema —— 标准里 ``required`` 是对象级的字符串数组，属性上放布尔值
+    会被严格 provider（如 DeepSeek）以 400 拒绝。因此只在生成 schema 时剥离。
+    """
+    out: dict = {}
+    for name, spec in (parameters or {}).items():
+        if isinstance(spec, dict):
+            out[name] = {k: v for k, v in spec.items() if k != "required"}
+        else:
+            out[name] = spec
+    return out
+
+
 class ToolDef:
     """Tool definition with JSON Schema for function calling."""
     def __init__(self, name: str, description: str, parameters: dict,
@@ -69,9 +86,9 @@ class ToolDef:
                 "description": self.description,
                 "parameters": {
                     "type": "object",
-                    "properties": self.parameters,
+                    "properties": schema_properties(self.parameters),
                     "required": [k for k, v in self.parameters.items()
-                                 if v.get("required", False)],
+                                 if isinstance(v, dict) and v.get("required", False)],
                 },
             },
         }
